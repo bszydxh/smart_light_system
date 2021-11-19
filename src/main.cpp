@@ -27,12 +27,15 @@ void print_time()
     }
     char str1[30];
     char str2[30];
+    char str3[30];
     sprintf(str1, "%4d-%02d-%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
-    sprintf(str2, "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    strftime(str2,100,"%H:%M:%S",&timeinfo);
+    strftime(str3,100,"%A",&timeinfo);
     u8g2.clearBuffer();
     u8g2.setFont(u8g2_font_ncenB14_tr);
     u8g2.drawStr(0, 20, str1);
     u8g2.drawStr(0, 40, str2);
+    u8g2.drawStr(0, 60, str3);
     u8g2.sendBuffer();
     if (ok == 0)
     {

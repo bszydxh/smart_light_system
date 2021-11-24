@@ -14,17 +14,20 @@
 #define BLINKER_WIFI          //Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "Blinker.h"
+int retry = 0; //记录重试次数,全局变量
 int ok = 0;
-const char *ssid = "bszydxh"; //定义一个字符串(指针定义法)
-const char *password = "1357924680";
+const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)
+const char *password = "21009200835";
+//const char *ssid = "bszydxh"; //本地测试环境
+//const char *password = "1357924680";
 const char *auth = "AA7B63392ZQC";
 const char *ntpServer = "pool.ntp.org"; //时间服务器
 const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
-U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE);
+U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
 BlinkerButton Button1("btn-abc");
 BlinkerNumber Number1("num-abc");
-int light_on = 1;
+int light_on = 1;//显示屏开关
 void oled_show(const char *str1, const char *str2, const char *str3) //提供三行英文输出
 {
     if (light_on == 1)
@@ -40,26 +43,34 @@ void oled_show(const char *str1, const char *str2, const char *str3) //提供三
         //Serial.println(str);//不需要日志注释掉
         Serial.println("oled_change");
         u8g2.sendBuffer();
-    }else if(light_on == 0){
+    }
+    else if (light_on == 0)
+    {
         u8g2.clearBuffer();
         u8g2.sendBuffer();
         Serial.println("oled_off");
-
     }
 }
-void print_time()
+void print_time() //常驻显示任务,必须循环,否则出事
 {
     struct tm timeinfo;
-    if (!getLocalTime(&timeinfo))
+    if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
     {
         oled_show("error:404", "pls wait", "retrying...");
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        retry++;
+        if (retry == 20)
+        {
+            Serial.println("error:no connect");
+            oled_show("error:sys", "pls wait", "restarting...");
+            esp_restart();
+        }
         return;
     }
     char str1[30];
     char str2[30];
     char str3[30];
-    sprintf(str1, "%4d-%02d-%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+    sprintf(str1, "%4d-%02d-%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday); //整合字符串
     strftime(str2, 100, "%H:%M:%S", &timeinfo);
     if (WiFi.status() == WL_CONNECTED)
     {
@@ -69,7 +80,6 @@ void print_time()
     {
         strftime(str3, 100, "%a OFL", &timeinfo);
     }
-
     oled_show(str1, str2, str3);
     /*if (ok == 0)
     {
@@ -80,7 +90,7 @@ void print_time()
     delay(100);
     //Serial.println(&timeinfo, "%F %T %A");//日志
 }
-int counter = 0;
+int counter = 0; //官方计数
 void button1_callback(const String &state)
 {
     BLINKER_LOG("get button state:", state);
@@ -99,17 +109,17 @@ void miotPowerState(const String &state)
 
     if (state == BLINKER_CMD_ON)
     {
-        Serial.println("light on");
         light_on = 1;
+        Serial.println("light on");
         oled_show("", "", "light on");
         BlinkerMIOT.powerState("on");
         BlinkerMIOT.print();
     }
     else if (state == BLINKER_CMD_OFF)
     {
+        oled_show("", "", "light off");
         Serial.println("light off");
         light_on = 0;
-        oled_show("", "", "light off");
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
     }
@@ -125,10 +135,19 @@ void setup()
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {
+        retry++;
         Serial.println("no wifi!");
+        Serial.println(ssid);
         oled_show("esp32", "---bszydxh", "no wifi...");
+        if (retry == 15)
+        {
+            Serial.println("error:no wifi");
+            oled_show("error:sys", "pls wait", "restarting...");
+            esp_restart();
+        }
         delay(1000);
     }
+    retry = 0;
     oled_show("esp32", "---bszydxh", "wifi ok...");
     Serial.println("wifi! done");
     Blinker.begin(auth, ssid, password);
@@ -136,12 +155,9 @@ void setup()
     Button1.attach(button1_callback);
     BlinkerMIOT.attachPowerState(miotPowerState);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-    delay(500);
-    print_time();
 }
-
 void loop()
 {
-    Blinker.run();
+    Blinker.run();//wifi blinker自动处理 不用管
     print_time();
 }

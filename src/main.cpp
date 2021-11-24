@@ -14,6 +14,7 @@
 #define BLINKER_WIFI          //Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "Blinker.h"
+#include "FastLED.h"
 int retry = 0; //记录重试次数,全局变量
 int ok = 0;
 const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)

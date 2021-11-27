@@ -15,6 +15,9 @@
 #define BLINKER_MIOT_LIGHT
 #include "Blinker.h"
 #include "FastLED.h"
+#define NUM_LEDS 120
+#define DATA_PIN 25
+CRGB leds[NUM_LEDS];
 int retry = 0; //记录重试次数,全局变量
 int ok = 0;
 const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)
@@ -28,7 +31,37 @@ const int daylightOffset_sec = 0;
 U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
 BlinkerButton Button1("btn-abc");
 BlinkerNumber Number1("num-abc");
-int light_on = 1;//显示屏开关
+int light_on = 1;
+int mode = 0;
+int light_change = 0;
+void light()
+{
+    if (light_change == 1)
+    {
+        // Move a single white led
+        for (int whiteLed = 0; whiteLed < NUM_LEDS; whiteLed = whiteLed + 1)
+        {
+            // Turn our current led on to white, then show the leds
+
+            if (mode == 1)
+            {
+                leds[whiteLed] = CRGB::White;
+            }
+            else if (mode == 0)
+            {
+                leds[whiteLed] = CRGB::Black;
+            }
+            light_change = 0;
+            FastLED.show();
+        }
+        // Show the leds (only one of which is set to white, from above)
+
+        // Wait a little bit
+        // Turn our current led back to black for the next loop around
+        //leds[whiteLed] = CRGB::Black;
+    }
+}
+//显示屏开关
 void oled_show(const char *str1, const char *str2, const char *str3) //提供三行英文输出
 {
     if (light_on == 1)
@@ -112,6 +145,8 @@ void miotPowerState(const String &state)
     {
         light_on = 1;
         Serial.println("light on");
+        light_change = 1;
+        mode = 1;
         oled_show("", "", "light on");
         BlinkerMIOT.powerState("on");
         BlinkerMIOT.print();
@@ -120,11 +155,14 @@ void miotPowerState(const String &state)
     {
         oled_show("", "", "light off");
         Serial.println("light off");
+        light_change = 1;
+        mode = 0;
         light_on = 0;
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
     }
 }
+
 void setup()
 {
     Serial.begin(115200);
@@ -156,9 +194,13 @@ void setup()
     Button1.attach(button1_callback);
     BlinkerMIOT.attachPowerState(miotPowerState);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
+    FastLED.setBrightness(255);
+    light_change = 1;
 }
 void loop()
 {
-    Blinker.run();//wifi blinker自动处理 不用管
+    Blinker.run(); //wifi blinker自动处理 不用管
     print_time();
+    light();
 }

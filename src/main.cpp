@@ -31,9 +31,14 @@ const int daylightOffset_sec = 0;
 U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
 BlinkerButton Button1("btn-abc");
 BlinkerNumber Number1("num-abc");
+BlinkerRGB RGB1("col-6ok");
 int light_on = 1;
 int mode = 0;
 int light_change = 0;
+int light_brightness = 255;
+int light_color_r = 0xff;
+int light_color_g = 0xff;
+int light_color_b = 0xff;
 void light()
 {
     if (light_change == 1)
@@ -45,11 +50,26 @@ void light()
 
             if (mode == 1)
             {
-                leds[whiteLed] = CRGB::White;
+                leds[whiteLed].r = light_color_r;
+                leds[whiteLed].g = light_color_g;
+                leds[whiteLed].b = light_color_b;
             }
             else if (mode == 0)
             {
                 leds[whiteLed] = CRGB::Black;
+            }
+            else if (mode == 2)
+            {
+                leds[whiteLed].r = light_color_r;
+                leds[whiteLed].g = light_color_g;
+                leds[whiteLed].b = light_color_b;
+            }
+            else if (mode == 3)
+            {
+                leds[whiteLed].r = light_color_r;
+                leds[whiteLed].g = light_color_g;
+                leds[whiteLed].b = light_color_b;
+                FastLED.setBrightness(light_brightness);
             }
             light_change = 0;
             FastLED.show();
@@ -68,20 +88,20 @@ void oled_show(const char *str1, const char *str2, const char *str3) //提供三
     {
         //char str_sum[100];//不需要日志注释掉
         //char *str = &str_sum[0];//不需要日志注释掉
-        u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_ncenB14_tr);
-        u8g2.drawStr(0, 20, str1);
-        u8g2.drawStr(0, 40, str2);
-        u8g2.drawStr(0, 60, str3);
+        // u8g2.clearBuffer();
+        //u8g2.setFont(u8g2_font_ncenB14_tr);
+        //u8g2.drawStr(0, 20, str1);
+        //u8g2.drawStr(0, 40, str2);
+        //u8g2.drawStr(0, 60, str3);
         //sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
         //Serial.println(str);//不需要日志注释掉
         Serial.println("oled_change");
-        u8g2.sendBuffer();
+        //u8g2.sendBuffer();
     }
     else if (light_on == 0)
     {
-        u8g2.clearBuffer();
-        u8g2.sendBuffer();
+        // u8g2.clearBuffer();
+        //u8g2.sendBuffer();
         Serial.println("oled_off");
     }
 }
@@ -91,6 +111,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
     if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
     {
         oled_show("error:404", "pls wait", "retrying...");
+        Serial.println("error:no connect");
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         retry++;
         if (retry == 20)
@@ -131,6 +152,20 @@ void button1_callback(const String &state)
     Serial.println("button done");
     oled_show("", "", "button on");
 }
+void rgb1_callback(uint8_t r_value, uint8_t g_value, uint8_t b_value, uint8_t bright_value)
+{
+    BLINKER_LOG("R value: ", r_value);
+    BLINKER_LOG("G value: ", g_value);
+    BLINKER_LOG("B value: ", b_value);
+    BLINKER_LOG("Rrightness value: ", bright_value);
+    light_brightness = bright_value;
+    light_color_r = (int)r_value;
+    light_color_g = (int)g_value;
+    light_color_b = (int)b_value;
+    Serial.println("rgb change");
+    light_change = 1;
+    mode = 3;
+}
 void dataRead(const String &data)
 {
     BLINKER_LOG("Blinker readString: ", data);
@@ -162,7 +197,35 @@ void miotPowerState(const String &state)
         BlinkerMIOT.print();
     }
 }
+void miotColor(int32_t color)
+{
+    BLINKER_LOG("need set color: ", color);
 
+    int32_t colorR = color >> 16 & 0xFF;
+    int32_t colorG = color >> 8 & 0xFF;
+    int32_t colorB = color & 0xFF;
+    Serial.println("color change");
+    BLINKER_LOG("colorR: ", colorR, ", colorG: ", colorG, ", colorB: ", colorB);
+    mode = 2;
+    light_change = 1;
+    light_color_b = colorB;
+    light_color_r = colorR;
+    light_color_g = colorG;
+    BlinkerMIOT.color(color);
+    BlinkerMIOT.print();
+    light_change = 1;
+    mode = 3;
+}
+void miotBright(const String &bright)
+{
+    BLINKER_LOG("need set brightness: ", bright);
+    light_brightness = bright.toInt() / 2 + bright.toInt() * 2;
+    mode = 3;
+    light_change = 1;
+    BLINKER_LOG("now set brightness: ", light_brightness);
+    BlinkerMIOT.brightness(light_brightness);
+    BlinkerMIOT.print();
+}
 void setup()
 {
     Serial.begin(115200);
@@ -192,7 +255,10 @@ void setup()
     Blinker.begin(auth, ssid, password);
     Blinker.attachData(dataRead);
     Button1.attach(button1_callback);
+    RGB1.attach(rgb1_callback);
     BlinkerMIOT.attachPowerState(miotPowerState);
+    BlinkerMIOT.attachColor(miotColor);
+    BlinkerMIOT.attachBrightness(miotBright);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(255);

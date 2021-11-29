@@ -39,8 +39,8 @@ CRGB leds[NUM_LEDS];
 void setup()
 {
     // Use NEOPIXEL to keep true colors
-    FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
-
+    //FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
+    FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
     // Initial RGB flash
     LEDS.showColor(CRGB(255, 0, 0));
     delay(500);
@@ -85,14 +85,12 @@ void loop()
         ;
     ;
     chk = Serial.read();
-
     // If checksum does not match go back to wait
     if (chk != (hi ^ lo ^ 0x55))
     {
         i = 0;
         goto waitLoop;
     }
-
     memset(leds, 0, NUM_LEDS * sizeof(struct CRGB));
     // Read the transmission data and set LED values
     for (uint8_t i = 0; i < NUM_LEDS; i++)

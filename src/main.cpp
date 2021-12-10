@@ -15,7 +15,7 @@
 #define BLINKER_MIOT_LIGHT
 #include "Blinker.h"
 #include "FastLED.h"
-#define NUM_LEDS 96
+#define NUM_LEDS 120
 #define DATA_PIN 25
 #define USE_MULTCORE 0
 CRGB leds[NUM_LEDS];
@@ -323,6 +323,9 @@ void light()
                     leds[72 + i].r = light_change_color_r;
                     leds[72 + i].g = light_change_color_g;
                     leds[72 + i].b = light_change_color_b;
+                    leds[96 + i].r = light_change_color_r;
+                    leds[96 + i].g = light_change_color_g;
+                    leds[96 + i].b = light_change_color_b;
                 }
                 FastLED.setBrightness(light_change_brightness);
                 light_change = 0;
@@ -365,6 +368,9 @@ void light()
                     leds[72 + i].r = light_change_color_r;
                     leds[72 + i].g = light_change_color_g;
                     leds[72 + i].b = light_change_color_b;
+                    leds[96 + i].r = light_change_color_r;
+                    leds[96 + i].g = light_change_color_g;
+                    leds[96 + i].b = light_change_color_b;
                 }
                 light_change = 0;
                 Serial.print("r:");

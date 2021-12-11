@@ -88,10 +88,13 @@ void esp32_Http()
         //JsonArray now = root["now"];
         const char *text = root["now"]["text"];
         const char *temp = root["now"]["temp"];
-        if (text != NULL && temp != NULL)
+        if (text != NULL)
+        {
+            sprintf(text_final, "%s", text);
+        }
+        if (temp != NULL)
         {
             sprintf(temp_final, "%s", temp);
-            sprintf(text_final, "%s", text);
         }
         Serial.println(text);
     }
@@ -112,10 +115,10 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
         //char *str = &str_sum[0];//不需要日志注释掉
         u8g2.clearBuffer();
         u8g2.setFont(u8g2_font_ncenB12_tr);
-        u8g2.drawStr(0, 16, str1);
-        u8g2.drawStr(0, 32, str2);
-        u8g2.drawStr(0, 48, str3);
-        u8g2.drawStr(0, 64, str4);
+        u8g2.drawStr(0, 12, str1);
+        u8g2.drawStr(0, 27, str2);
+        u8g2.drawStr(0, 42, str3);
+        u8g2.drawStr(0, 57, str4);
         //sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
         //Serial.println(str);//不需要日志注释掉
         Serial.println("oled_change");

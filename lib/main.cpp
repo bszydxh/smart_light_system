@@ -15,101 +15,105 @@
 #define BLINKER_MIOT_LIGHT
 #include "Blinker.h"
 #include "FastLED.h"
-/*
- * Arduino interface for the use of WS2812 strip LEDs
- * Uses Adalight protocol and is compatible with Boblight, Prismatik etc...
- * "Magic Word" for synchronisation is 'Ada' followed by LED High, Low and Checksum
- * @author: Wifsimster <wifsimster@gmail.com> 
- * @library: FastLED v3.001
- * @date: 11/22/2015
- */
-#include "FastLED.h"
-#define NUM_LEDS 96
-#define DATA_PIN 25
+/**********************************************************************
+  项目名称/Project          : 零基础入门学用物联网
+  程序名称/Program name     : HTTPClient_begin
+  团队/Team                : 太极创客团队 / Taichi-Maker (www.taichi-maker.com)
+  作者/Author              : Dapenson
+  日期/Date（YYYYMMDD）     : 20200325
+  程序目的/Purpose          :
+  此程序用于演示如何使用ESP8266来向www.example.com网站服务器发送GET请求并通过串口
+  监视器将网站服务器响应信息通过串口监视器显示出来。
+  -----------------------------------------------------------------------
+  修订历史/Revision History  
+  日期/Date    作者/Author      参考号/Ref    修订说明/Revision Description
+  20200411      CYNO朔           001        将请求服务器改为www.example.com
+  -----------------------------------------------------------------------
+  本示例程序为太极创客团队制作的《零基础入门学用物联网》中示例程序。
+  该教程为对物联网开发感兴趣的朋友所设计和制作。如需了解更多该教程的信息，请参考以下网页：
+  http://www.taichi-maker.com/homepage/esp8266-nodemcu-iot/iot-c/esp8266-nodemcu-web-client/http-request/
+***********************************************************************/
+#include <HTTPClient.h>
+//#include "ArduinoJson.h"
 
-// Baudrate, higher rate allows faster refresh rate and more LEDs (defined in /etc/boblight.conf)
-#define serialRate 115200
+// 测试HTTP请求用的URL
 
-// Adalight sends a "Magic Word" (defined in /etc/boblight.conf) before sending the pixel data
-uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;
+#define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
+//#define URL "https://nmsl.shadiao.app/api.php?from=xxx"
+//#define URL "https://oapi.dingtalk.com/robot/send?access_token=9db4d9fd558fd1bd70d8a5f1e7a79c6a185ff4529724e13f7ad50d56bd10bb45"
+// 设置wifi接入信息(请根据您的WiFi信息进行修改)
+const char *ssid = "bszydxh";
+const char *password = "1357924680";
+// 发送HTTP请求并且将服务器响应通过串口输出
+void esp8266Http()
+{
 
-// Initialise LED-array
-CRGB leds[NUM_LEDS];
+    //创建 HTTPClient 对象
+    HTTPClient httpClient;
 
+    //配置请求地址。此处也可以不使用端口号和PATH而单纯的
+    httpClient.begin(URL);
+    httpClient.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
+    Serial.print("URL: ");
+    Serial.println(URL);
+    httpClient.addHeader("charset", "utf-8");
+    //启动连接并发送HTTP请求
+    int httpCode = httpClient.GET();
+    Serial.print("Send GET request to URL: ");
+    Serial.println(URL);
+
+    //如果服务器响应OK则从服务器获取响应体信息并通过串口输出
+    //如果服务器不响应OK则将服务器响应状态码通过串口输出
+    if (httpCode == HTTP_CODE_OK)
+    {
+        //String responsePayload = httpClient.getString();
+        const String &payload = httpClient.getString();
+        Serial.println("Server Response Payload:");
+        Serial.println(payload);
+        DynamicJsonDocument jsonBuffer(2048);
+        deserializeJson(jsonBuffer, payload);
+        JsonObject root = jsonBuffer.as<JsonObject>();
+        //JsonArray now = root["now"];
+        const char *text = root["now"]["text"];
+        Serial.println(text);
+    }
+    else
+    {
+        Serial.println("Server Respose Code:");
+        Serial.println(httpCode);
+    }
+
+    //关闭与服务器连接
+    httpClient.end();
+}
 void setup()
 {
-    // Use NEOPIXEL to keep true colors
-    //FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
-    FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
-    // Initial RGB flash
-    LEDS.showColor(CRGB(255, 0, 0));
-    delay(500);
-    LEDS.showColor(CRGB(0, 255, 0));
-    delay(500);
-    LEDS.showColor(CRGB(0, 0, 255));
-    delay(500);
-    LEDS.showColor(CRGB(0, 0, 0));
+    //初始化串口设置
+    Serial.begin(115200);
 
-    Serial.begin(serialRate);
-    // Send "Magic Word" string to host
-    Serial.print("Ada\n");
+    //设置ESP8266工作模式为无线终端模式
+    WiFi.mode(WIFI_STA);
+
+    //开始连接wifi
+    WiFi.begin(ssid, password);
+
+    //等待WiFi连接,连接成功打印IP
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(1000);
+        Serial.print(".");
+    }
+    Serial.println("");
+    Serial.print("WiFi Connected!");
 }
 
 void loop()
 {
-    // Wait for first byte of Magic Word
-    for (i = 0; i < sizeof prefix; ++i)
+    // 如果ESP8266连接WiFi则发送HTTP请求
+    if ((WiFi.status() == WL_CONNECTED))
     {
-    waitLoop:
-        while (!Serial.available())
-            ;
-        ;
-        // Check next byte in Magic Word
-        if (prefix[i] == Serial.read())
-            continue;
-        // otherwise, start over
-        i = 0;
-        goto waitLoop;
+        esp8266Http();
     }
 
-    // Hi, Lo, Checksum
-    while (!Serial.available())
-        ;
-    ;
-    hi = Serial.read();
-    while (!Serial.available())
-        ;
-    ;
-    lo = Serial.read();
-    while (!Serial.available())
-        ;
-    ;
-    chk = Serial.read();
-    // If checksum does not match go back to wait
-    if (chk != (hi ^ lo ^ 0x55))
-    {
-        i = 0;
-        goto waitLoop;
-    }
-    memset(leds, 0, NUM_LEDS * sizeof(struct CRGB));
-    // Read the transmission data and set LED values
-    for (uint8_t i = 0; i < NUM_LEDS; i++)
-    {
-        byte r, g, b;
-        while (!Serial.available())
-            ;
-        r = Serial.read();
-        while (!Serial.available())
-            ;
-        g = Serial.read();
-        while (!Serial.available())
-            ;
-        b = Serial.read();
-        leds[i].r = r;
-        leds[i].g = g;
-        leds[i].b = b;
-    }
-
-    // Shows new values
-    FastLED.show();
+    delay(5000); // 短暂等待
 }

@@ -13,6 +13,7 @@
 #define BLINKER_PRINT Serial  //Blinker.h依赖
 #define BLINKER_WIFI          //Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
+#include "HTTPClient.h"
 #include "Blinker.h"
 #include "FastLED.h"
 #define NUM_LEDS 120
@@ -48,19 +49,70 @@ int light_change_color_b = 0xff;
 int light_color_r = 255;
 int light_color_g = 150;
 int light_color_b = 50;
+////////////////////////////////////////////////////////////////
+//http请求部分,查天气,get
+//
+#define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n&lang=en"
+char text_final[30] = "NULL";
+char temp_final[10] = "x";
+////////////////////////////////////////////////////////////////
 
+void esp32_Http()
+{
+
+    //创建 HTTPClient 对象
+    HTTPClient httpClient;
+
+    //配置请求地址。此处也可以不使用端口号和PATH而单纯的
+    httpClient.begin(URL);
+    httpClient.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
+    Serial.print("URL: ");
+    Serial.println(URL);
+    httpClient.addHeader("charset", "utf-8");
+    //启动连接并发送HTTP请求
+    int httpCode = httpClient.GET();
+    Serial.print("Send GET request to URL: ");
+    Serial.println(URL);
+
+    //如果服务器响应OK则从服务器获取响应体信息并通过串口输出
+    //如果服务器不响应OK则将服务器响应状态码通过串口输出
+    if (httpCode == HTTP_CODE_OK)
+    {
+        //String responsePayload = httpClient.getString();
+        const String &payload = httpClient.getString();
+        Serial.println("Server Response Payload:");
+        Serial.println(payload);
+        DynamicJsonDocument jsonBuffer(2048);
+        deserializeJson(jsonBuffer, payload);
+        JsonObject root = jsonBuffer.as<JsonObject>();
+        //JsonArray now = root["now"];
+        const char *text = root["now"]["text"];
+        const char *temp = root["now"]["temp"];
+        sprintf(temp_final, "%s", temp);
+        sprintf(text_final, "%s", text);
+        Serial.println(text);
+    }
+    else
+    {
+        Serial.println("Server Respose Code:");
+        Serial.println(httpCode);
+    }
+    //关闭与服务器连接
+    httpClient.end();
+}
 //显示屏开关
-void oled_show(const char *str1, const char *str2, const char *str3) //提供三行英文输出
+void oled_show(const char *str1, const char *str2, const char *str3, const char *str4) //提供三行英文输出
 {
     if (light_on == 1)
     {
         //char str_sum[100];//不需要日志注释掉
         //char *str = &str_sum[0];//不需要日志注释掉
         u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_ncenB14_tr);
-        u8g2.drawStr(0, 20, str1);
-        u8g2.drawStr(0, 40, str2);
-        u8g2.drawStr(0, 60, str3);
+        u8g2.setFont(u8g2_font_ncenB12_tr);
+        u8g2.drawStr(0, 16, str1);
+        u8g2.drawStr(0, 32, str2);
+        u8g2.drawStr(0, 48, str3);
+        u8g2.drawStr(0, 64, str4);
         //sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
         //Serial.println(str);//不需要日志注释掉
         Serial.println("oled_change");
@@ -73,19 +125,20 @@ void oled_show(const char *str1, const char *str2, const char *str3) //提供三
         Serial.println("oled_off");
     }
 }
+struct tm timeinfo;
 void print_time() //常驻显示任务,必须循环,否则出事
 {
-    struct tm timeinfo;
+
     if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
     {
-        oled_show("error:404", "pls wait", "retrying...");
+        oled_show("error:404", "pls wait", "retrying...", "");
         Serial.println("error:no connect");
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         retry++;
         if (retry == 20)
         {
             Serial.println("error:no connect");
-            oled_show("error:sys", "pls wait", "restarting...");
+            oled_show("error:sys", "pls wait", "restarting...", "");
             esp_restart();
         }
         return;
@@ -93,17 +146,21 @@ void print_time() //常驻显示任务,必须循环,否则出事
     char str1[30];
     char str2[30];
     char str3[30];
+    char strr[30];
     sprintf(str1, "%4d-%02d-%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday); //整合字符串
     strftime(str2, 100, "%H:%M:%S", &timeinfo);
     if (WiFi.status() == WL_CONNECTED)
     {
-        strftime(str3, 100, "%a ONL", &timeinfo);
+        strftime(strr, 100, "%a ONL", &timeinfo);
+        sprintf(str3, "%s %sC", strr, temp_final);
     }
     else
     {
-        strftime(str3, 100, "%a OFL", &timeinfo);
+        strftime(strr, 100, "%a OFL", &timeinfo);
+        sprintf(str3, "%s %sC", strr, temp_final);
     }
-    oled_show(str1, str2, str3);
+
+    oled_show(str1, str2, str3, text_final);
     /*if (ok == 0)
     {
         WiFi.disconnect(true);
@@ -270,6 +327,77 @@ void miotBright(const String &bright)
     BlinkerMIOT.print();
     //oled_show("", "brightness", "change");
 }
+void miotMode(uint8_t mode_mi)
+{
+    BLINKER_LOG("need set mode: ", mode_mi);
+
+    if (mode_mi == BLINKER_CMD_MIOT_DAY)
+    {
+        light_color_r = 255;
+        light_color_g = 150;
+        light_color_b = 50;
+        Serial.print("mi_color||r:");
+        Serial.print(light_color_r);
+        Serial.print("  g:");
+        Serial.print(light_color_g);
+        Serial.print("  b:");
+        Serial.println(light_color_b);
+        light_brightness = 255;
+        light_change = 1;
+        mode = 3;
+    }
+    else if (mode_mi == BLINKER_CMD_MIOT_NIGHT)
+    {
+        light_color_r = 0;
+        light_color_g = 0;
+        light_color_b = 255;
+        Serial.print("mi_color||r:");
+        Serial.print(light_color_r);
+        Serial.print("  g:");
+        Serial.print(light_color_g);
+        Serial.print("  b:");
+        Serial.println(light_color_b);
+        light_brightness = 120;
+        light_change = 1;
+        mode = 3;
+    }
+    else if (mode_mi == BLINKER_CMD_MIOT_COLOR)
+    {
+        // Your mode function
+    }
+    else if (mode_mi == BLINKER_CMD_MIOT_WARMTH)
+    {
+        // Your mode function
+    }
+    else if (mode_mi == BLINKER_CMD_MIOT_TV)
+    {
+        // Your mode function
+    }
+    else if (mode_mi == BLINKER_CMD_MIOT_READING)
+    {
+
+    light_color_r = 255;
+    light_color_g = 150;
+    light_color_b = 50;
+    Serial.print("mi_color||r:");
+    Serial.print(light_color_r);
+    Serial.print("  g:");
+    Serial.print(light_color_g);
+    Serial.print("  b:");
+    Serial.println(light_color_b);
+    light_change = 1;
+    light_brightness = 255;
+    mode = 3;
+    }
+    else if (mode_mi == BLINKER_CMD_MIOT_COMPUTER)
+    {
+        Serial.print("Ada\n");
+        rgb_screen_on = 1;
+        light_change = 1;
+    }
+    BlinkerMIOT.mode(mode_mi);
+    BlinkerMIOT.print();
+}
 void xTaskOne(void *xTask1)
 {
     while (1)
@@ -278,6 +406,7 @@ void xTaskOne(void *xTask1)
         delay(100);
     }
 }
+int8_t task2_running = 0;
 void xTaskTwo(void *xTask2)
 {
     while (1)
@@ -290,7 +419,7 @@ void light()
     if (light_change == 1) //1 全色
     {
         // Move a single white led
-        if (rgb_screen_on == 1)
+        if (rgb_screen_on == 1 && task2_running == 0)
         {
 #if !USE_MULTCORE
             xTaskCreate(xTaskTwo, "TaskTwo", 4096, NULL, 2, NULL);
@@ -298,6 +427,7 @@ void light()
             xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, 2, NULL, 0);
 #endif
             rgb_screen_on = 0;
+            task2_running = 1;
             return;
         }
         if (mode == 1 || mode == 3)
@@ -395,6 +525,7 @@ void setup()
 {
     Serial.begin(115200);
     Serial.println("bszydxh esp32 start!");
+    WiFi.mode(WIFI_STA);
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(255);
 #if defined(BLINKER_PRINT)
@@ -407,17 +538,17 @@ void setup()
         retry++;
         Serial.println("no wifi!");
         Serial.println(ssid);
-        oled_show("esp32", "---bszydxh", "no wifi...");
+        oled_show("esp32", "---bszydxh", "no wifi...", "");
         if (retry == 15)
         {
             Serial.println("error:no wifi");
-            oled_show("error:sys", "pls wait", "restarting...");
+            oled_show("error:sys", "pls wait", "restarting...", "");
             esp_restart();
         }
         delay(1000);
     }
     retry = 0;
-    oled_show("esp32", "---bszydxh", "wifi ok...");
+    oled_show("esp32", "---bszydxh", "wifi ok...", "");
     Serial.println("wifi! done");
     Blinker.begin(auth, ssid, password);
     Blinker.attachData(dataRead);
@@ -425,6 +556,7 @@ void setup()
     RGB1.attach(rgb1_callback);
     BlinkerMIOT.attachPowerState(miotPowerState);
     BlinkerMIOT.attachColor(miotColor);
+    BlinkerMIOT.attachMode(miotMode);
     BlinkerMIOT.attachBrightness(miotBright);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
@@ -435,9 +567,14 @@ void setup()
     xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 4096, NULL, 1, NULL, 1);
     //xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, 2, NULL, 1);
 #endif
+esp32_Http();
 }
 void loop()
 {
     Blinker.run(); //wifi blinker自动处理 不用管
     light();
+    if (timeinfo.tm_min % 3 == 0 && timeinfo.tm_sec == 0)
+    {
+        esp32_Http();
+    }
 }

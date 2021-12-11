@@ -88,8 +88,11 @@ void esp32_Http()
         //JsonArray now = root["now"];
         const char *text = root["now"]["text"];
         const char *temp = root["now"]["temp"];
-        sprintf(temp_final, "%s", temp);
-        sprintf(text_final, "%s", text);
+        if (text != NULL && temp != NULL)
+        {
+            sprintf(temp_final, "%s", temp);
+            sprintf(text_final, "%s", text);
+        }
         Serial.println(text);
     }
     else
@@ -376,18 +379,18 @@ void miotMode(uint8_t mode_mi)
     else if (mode_mi == BLINKER_CMD_MIOT_READING)
     {
 
-    light_color_r = 255;
-    light_color_g = 150;
-    light_color_b = 50;
-    Serial.print("mi_color||r:");
-    Serial.print(light_color_r);
-    Serial.print("  g:");
-    Serial.print(light_color_g);
-    Serial.print("  b:");
-    Serial.println(light_color_b);
-    light_change = 1;
-    light_brightness = 255;
-    mode = 3;
+        light_color_r = 255;
+        light_color_g = 150;
+        light_color_b = 50;
+        Serial.print("mi_color||r:");
+        Serial.print(light_color_r);
+        Serial.print("  g:");
+        Serial.print(light_color_g);
+        Serial.print("  b:");
+        Serial.println(light_color_b);
+        light_change = 1;
+        light_brightness = 255;
+        mode = 3;
     }
     else if (mode_mi == BLINKER_CMD_MIOT_COMPUTER)
     {
@@ -567,7 +570,7 @@ void setup()
     xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 4096, NULL, 1, NULL, 1);
     //xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, 2, NULL, 1);
 #endif
-esp32_Http();
+    //esp32_Http();
 }
 void loop()
 {

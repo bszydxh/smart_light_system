@@ -15,6 +15,11 @@
 #define BLINKER_MIOT_LIGHT
 #include "Blinker.h"
 #include "FastLED.h"
+#include "ESP32-targz.h"
+const char *ntpServer = "pool.ntp.org"; //时间服务器
+struct tm timeinfo;
+const long gmtOffset_sec = 8 * 3600;
+const int daylightOffset_sec = 0;
 /**********************************************************************
   项目名称/Project          : 零基础入门学用物联网
   程序名称/Program name     : HTTPClient_begin
@@ -38,10 +43,11 @@
 
 // 测试HTTP请求用的URL
 
-#define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
+//#define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
 //#define URL "https://nmsl.shadiao.app/api.php?from=xxx"
 //#define URL "https://oapi.dingtalk.com/robot/send?access_token=9db4d9fd558fd1bd70d8a5f1e7a79c6a185ff4529724e13f7ad50d56bd10bb45"
 // 设置wifi接入信息(请根据您的WiFi信息进行修改)
+#define URL "https://xd.boxkj.com/app/h5/login"
 const char *ssid = "bszydxh";
 const char *password = "1357924680";
 // 发送HTTP请求并且将服务器响应通过串口输出
@@ -53,12 +59,21 @@ void esp8266Http()
 
     //配置请求地址。此处也可以不使用端口号和PATH而单纯的
     httpClient.begin(URL);
-    httpClient.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
+    //httpClient.setUserAgent("Mozilla/5.0 (Linux; Android 11; M2011K2C Build/RKQ1.200928.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/93.0.4577.62 Mobile Safari/537.36Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
     Serial.print("URL: ");
     Serial.println(URL);
-    httpClient.addHeader("charset", "utf-8");
+    char str_final[50];
+    sprintf(str_final, "%d000", mktime(&timeinfo));
+    //Serial.print(str_final);
+    httpClient.addHeader("timestamp", str_final);
+    httpClient.addHeader("content-type", "application/x-www-form-urlencoded");
+    httpClient.addHeader("sign", "af83c481823255119210648390cb7eec");
+    httpClient.addHeader("version", "99999");
+    httpClient.addHeader("accept", "*/*");
+    httpClient.addHeader("Host", "xd.boxkj.com");
     //启动连接并发送HTTP请求
-    int httpCode = httpClient.GET();
+    //int httpCode = httpClient.GET();
+    int httpCode = httpClient.POST("uname=21009200631&pwd=qyfMNFIp5c9F254lk9Zwx4iPNhuMpAihZDA2myvGmHo47GS0tnQWMMLvb%2FY5La9jvUbhAe4X48kl36biiUQcp0cbua2BdezTrv6LUqiYEfajW2b1wtbsySKviyU2stlAGJYOpUiq95J8cDAopeW0uYEpyH9spaHpni42rjt5UaE48Gtx6Wf%2FKiBH2AlFeZI%2BKM8RhGeWI7Q6dALA1CA26VbPs8cnagjR%2F3bPJkQVXbNt2j1T7aSpGFObzHCzInHgJKBvEsM3dOACV1rxpmVrBTZwXBTmUw7MX9CJoJ53rIhLW0Yi4Ea6WyC%2Fq3vUDf0te1KpCM5dIzLpd2brmVCLOw%3D%3D&openid=");
     Serial.print("Send GET request to URL: ");
     Serial.println(URL);
 
@@ -70,10 +85,46 @@ void esp8266Http()
         const String &payload = httpClient.getString();
         Serial.println("Server Response Payload:");
         Serial.println(payload);
+        Stream *streamptr = httpClient.getStreamPtr();
+        if (streamptr != nullptr)
+        {
+            TarGzUnpacker *TARGZUnpacker = new TarGzUnpacker();
+            TARGZUnpacker->haltOnError(true);                                                            // stop on fail (manual restart/reset required)
+            TARGZUnpacker->setTarVerify(true);                                                           // true = enables health checks but slows down the overall process
+            TARGZUnpacker->setupFSCallbacks(targzTotalBytesFn, targzFreeBytesFn);                        // prevent the partition from exploding, recommended
+            TARGZUnpacker->setGzProgressCallback(BaseUnpacker::defaultProgressCallback);                 // targzNullProgressCallback or defaultProgressCallback
+            TARGZUnpacker->setLoggerCallback(BaseUnpacker::targzPrintLoggerCallback);                    // gz log verbosity
+            TARGZUnpacker->setTarProgressCallback(BaseUnpacker::defaultProgressCallback);                // prints the untarring progress for each individual file
+            TARGZUnpacker->setTarStatusProgressCallback(BaseUnpacker::defaultTarStatusProgressCallback); // print the filenames as they're expanded
+            TARGZUnpacker->setTarMessageCallback(BaseUnpacker::targzPrintLoggerCallback);                // tar log verbosity
+
+            if (!TARGZUnpacker->tarGzStreamExpander(streamptr, tarGzFS))
+            {
+                Serial.printf("tarGzStreamExpander failed with return code #%d\n", TARGZUnpacker->tarGzGetError());
+            }
+            else
+            {
+                // print leftover bytes if any (probably zero-fill from the server)
+                while (httpClient.connected())
+                {
+                    size_t streamSize = streamptr->available();
+                    if (streamSize)
+                    {
+                        Serial.printf("%02x ", streamptr->read());
+                    }
+                    else
+                        break;
+                }
+                Serial.println();
+            }
+        }
+        else
+        {
+            Serial.println("Failed to establish http connection");
+        }
         DynamicJsonDocument jsonBuffer(2048);
         deserializeJson(jsonBuffer, payload);
         JsonObject root = jsonBuffer.as<JsonObject>();
-        //JsonArray now = root["now"];
         const char *text = root["now"]["text"];
         Serial.println(text);
     }
@@ -105,6 +156,20 @@ void setup()
     }
     Serial.println("");
     Serial.print("WiFi Connected!");
+    int retry = 0;
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
+    {
+        Serial.println("error:no connect");
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        retry++;
+        if (retry == 20)
+        {
+            Serial.println("error:no connect");
+            esp_restart();
+        }
+        return;
+    }
 }
 
 void loop()
@@ -114,6 +179,7 @@ void loop()
     {
         esp8266Http();
     }
-
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    //Serial.println(mktime(&timeinfo));
     delay(5000); // 短暂等待
 }

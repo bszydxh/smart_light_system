@@ -59,7 +59,6 @@ char temp_final[10] = "x";
 
 void esp32_Http()
 {
-
     //创建 HTTPClient 对象
     HTTPClient httpClient;
 
@@ -137,14 +136,28 @@ void print_time() //常驻显示任务,必须循环,否则出事
 
     if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
     {
-        oled_show("error:404", "pls wait", "retrying...", "");
+        //oled_show("error:404", "pls wait", "retrying...", "");
         Serial.println("error:no connect");
+         char retry_str[50] = "0";
+        sprintf(retry_str, "retry_num:%d", retry);
+        if (retry % 3 == 1)
+        {
+            oled_show("smart_screen", "---bszydxh", "no internet.", retry_str);
+        }
+        if (retry % 3 == 2)
+        {
+            oled_show("smart_screen", "---bszydxh", "no internet..", retry_str);
+        }
+        if (retry % 3 == 0)
+        {
+            oled_show("smart_screen", "---bszydxh", "no internet...", retry_str);
+        }
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         retry++;
         if (retry == 20)
         {
             Serial.println("error:no connect");
-            oled_show("error:sys", "pls wait", "restarting...", "");
+            oled_show("smart_screen", "error:sys", "pls wait", "restarting...");
             esp_restart();
         }
         return;
@@ -534,27 +547,42 @@ void setup()
     WiFi.mode(WIFI_STA);
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(255);
+
 #if defined(BLINKER_PRINT)
     BLINKER_DEBUG.stream(BLINKER_PRINT);
 #endif
     u8g2.begin();
     WiFi.begin(ssid, password);
+    oled_show("smart_screen", "---bszydxh", "finding wifi...", "closing rgb...");
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {
         retry++;
         Serial.println("no wifi!");
         Serial.println(ssid);
-        oled_show("esp32", "---bszydxh", "no wifi...", "");
+        char retry_str[50] = "0";
+        sprintf(retry_str, "retry_num:%d", retry);
+        if (retry % 3 == 1)
+        {
+            oled_show("smart_screen", "---bszydxh", "no wifi.", retry_str);
+        }
+        if (retry % 3 == 2)
+        {
+            oled_show("smart_screen", "---bszydxh", "no wifi..", retry_str);
+        }
+        if (retry % 3 == 0)
+        {
+            oled_show("smart_screen", "---bszydxh", "no wifi...", retry_str);
+        }
         if (retry == 15)
         {
             Serial.println("error:no wifi");
-            oled_show("error:sys", "pls wait", "restarting...", "");
+            oled_show("smart_screen", "error:sys", "pls wait", "restarting...");
             esp_restart();
         }
         delay(1000);
     }
     retry = 0;
-    oled_show("esp32", "---bszydxh", "wifi ok...", "");
+    oled_show("smart_screen", "---bszydxh", "wifi ok...", "loading sys...");
     Serial.println("wifi! done");
     Blinker.begin(auth, ssid, password);
     Blinker.attachData(dataRead);

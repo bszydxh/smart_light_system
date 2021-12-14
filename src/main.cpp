@@ -556,6 +556,7 @@ void setup()
     oled_show("smart_screen", "---bszydxh", "finding wifi...", "closing rgb...");
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {
+        delay(1000);
         retry++;
         Serial.println("no wifi!");
         Serial.println(ssid);
@@ -579,7 +580,6 @@ void setup()
             oled_show("smart_screen", "error:sys", "pls wait", "restarting...");
             esp_restart();
         }
-        delay(1000);
     }
     retry = 0;
     oled_show("smart_screen", "---bszydxh", "wifi ok...", "loading sys...");

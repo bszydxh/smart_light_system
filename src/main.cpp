@@ -2,24 +2,32 @@
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖
 #include "U8g2lib.h"
-#include "WiFi.h"             //Blinker.h依赖
-#include "ESPmDNS.h"          //Blinker.h依赖
-#include "FS.h"               //Blinker.h依赖
-#include "SPIFFS.h"           //Blinker.h依赖
-#include "Ticker.h"           //Blinker.h依赖
-#include "Update.h"           //Blinker.h依赖
-#include "WiFiClientSecure.h" //Blinker.h依赖
-#include "EEPROM.h"           //Blinker.h依赖
-#define BLINKER_PRINT Serial  //Blinker.h依赖
-#define BLINKER_WIFI          //Blinker.h依赖
+#include "WiFi.h"                //Blinker.h依赖
+#include "ESPmDNS.h"             //Blinker.h依赖
+#include "FS.h"                  //Blinker.h依赖
+#include "SPIFFS.h"              //Blinker.h依赖
+#include "Ticker.h"              //Blinker.h依赖
+#include "Update.h"              //Blinker.h依赖
+#include "WiFiClientSecure.h"    //Blinker.h依赖
+#include "EEPROM.h"              //Blinker.h依赖
+// #include <BLEDevice.h>           //蓝牙依赖
+// #include <BLEUtils.h>            //蓝牙依赖
+// #include <BLEScan.h>             //蓝牙依赖
+// #include <BLEAdvertisedDevice.h> //蓝牙依赖
+#define BLINKER_PRINT Serial     //Blinker.h依赖
+#define BLINKER_WIFI             //Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "HTTPClient.h"
 #include "Blinker.h"
 #include "FastLED.h"
+////////////////////////////////////////////////////////////////
+//灯光初始化定义
 #define NUM_LEDS 120
 #define DATA_PIN 25
 #define USE_MULTCORE 0
 CRGB leds[NUM_LEDS];
+////////////////////////////////////////////////////////////////
+//全局初始化
 int retry = 0; //记录重试次数,全局变量
 int ok = 0;
 const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)
@@ -31,9 +39,13 @@ const char *ntpServer = "pool.ntp.org"; //时间服务器
 const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
 U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
+////////////////////////////////////////////////////////////////
+//blinker注册
 BlinkerButton Button1("btn-abc");
 BlinkerNumber Number1("num-abc");
 BlinkerRGB RGB1("col-6ok");
+////////////////////////////////////////////////////////////////
+//灯光状态部分,字面意思
 int8_t light_on = 1;
 int8_t mode = 0;
 int8_t light_change = 0;
@@ -49,6 +61,34 @@ int light_change_color_b = 0xff;
 int light_color_r = 255;
 int light_color_g = 150;
 int light_color_b = 50;
+////////////////////////////////////////////////////////////////
+//蓝牙部分
+// int scanTime = 5; //In seconds
+// int scan_ok = 0;
+// BLEScan *pBLEScan;
+// class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
+// {
+//     void onResult(BLEAdvertisedDevice advertisedDevice)
+//     {
+//         //Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
+//         if (advertisedDevice.getAddress().toString() == "84:ab:26:a9:06:ce")
+//         {
+//             scan_ok = 1;
+//             printf("Advertised Device:%d", advertisedDevice.getRSSI());
+//         }
+//         else
+//         {
+//             scan_ok = 0;
+//             printf("can`t found device");
+//         }
+//     }
+// };
+// void scan()
+// {
+//     BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
+//     Serial.println("Scan done!");
+//     pBLEScan->clearResults(); // delete results fromBLEScan buffer to release memory
+// }
 ////////////////////////////////////////////////////////////////
 //http请求部分,查天气,get
 //
@@ -138,7 +178,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
     {
         //oled_show("error:404", "pls wait", "retrying...", "");
         Serial.println("error:no connect");
-         char retry_str[50] = "0";
+        char retry_str[50] = "0";
         sprintf(retry_str, "retry_num:%d", retry);
         if (retry % 3 == 1)
         {
@@ -276,7 +316,6 @@ void rgb_screen()
         leds[i].g = g;
         leds[i].b = b;
     }
-
     // Shows new values
     FastLED.show();
 }
@@ -602,6 +641,12 @@ void setup()
     //xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, 2, NULL, 1);
 #endif
     //esp32_Http();
+    // BLEDevice::init("");
+    // pBLEScan = BLEDevice::getScan(); //create new scan
+    // pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    // pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
+    // pBLEScan->setInterval(1000);
+    // pBLEScan->setWindow(99); // less or equal setInterval value
 }
 void loop()
 {
@@ -611,4 +656,9 @@ void loop()
     {
         esp32_Http();
     }
+    if (timeinfo.tm_sec == 0)
+    {
+        //scan();
+    }
+    
 }

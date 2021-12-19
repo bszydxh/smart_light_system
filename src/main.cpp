@@ -2,20 +2,20 @@
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖
 #include "U8g2lib.h"
-#include "WiFi.h"                //Blinker.h依赖
-#include "ESPmDNS.h"             //Blinker.h依赖
-#include "FS.h"                  //Blinker.h依赖
-#include "SPIFFS.h"              //Blinker.h依赖
-#include "Ticker.h"              //Blinker.h依赖
-#include "Update.h"              //Blinker.h依赖
-#include "WiFiClientSecure.h"    //Blinker.h依赖
-#include "EEPROM.h"              //Blinker.h依赖
+#include "WiFi.h"             //Blinker.h依赖
+#include "ESPmDNS.h"          //Blinker.h依赖
+#include "FS.h"               //Blinker.h依赖
+#include "SPIFFS.h"           //Blinker.h依赖
+#include "Ticker.h"           //Blinker.h依赖
+#include "Update.h"           //Blinker.h依赖
+#include "WiFiClientSecure.h" //Blinker.h依赖
+#include "EEPROM.h"           //Blinker.h依赖
 // #include <BLEDevice.h>           //蓝牙依赖
 // #include <BLEUtils.h>            //蓝牙依赖
 // #include <BLEScan.h>             //蓝牙依赖
 // #include <BLEAdvertisedDevice.h> //蓝牙依赖
-#define BLINKER_PRINT Serial     //Blinker.h依赖
-#define BLINKER_WIFI             //Blinker.h依赖
+#define BLINKER_PRINT Serial //Blinker.h依赖
+#define BLINKER_WIFI         //Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "HTTPClient.h"
 #include "Blinker.h"
@@ -35,7 +35,7 @@ const char *password = "21009200835";
 //const char *ssid = "bszydxh"; //本地测试环境
 //const char *password = "1357924680";
 const char *auth = "AA7B63392ZQC";
-const char *ntpServer = "pool.ntp.org"; //时间服务器
+const char *ntpServer = "cn.ntp.org.cn"; //时间服务器
 const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
 U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
@@ -61,6 +61,7 @@ int light_change_color_b = 0xff;
 int light_color_r = 255;
 int light_color_g = 150;
 int light_color_b = 50;
+int8_t computer_mode = 0;
 ////////////////////////////////////////////////////////////////
 //蓝牙部分
 // int scanTime = 5; //In seconds
@@ -92,11 +93,13 @@ int light_color_b = 50;
 ////////////////////////////////////////////////////////////////
 //http请求部分,查天气,get
 //
-#define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n&lang=en"
-char text_final[30] = "NULL";
-char temp_final[10] = "x";
+#define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
+char text_final[30] = "正在获取";
+char temp_final[10] = "X";
+char hitokoto_final[100] = "松花酿酒，春水煎茶。";
 ////////////////////////////////////////////////////////////////
 
+////////////////////////////////////////////////////////////////
 void esp32_Http()
 {
     //创建 HTTPClient 对象
@@ -145,6 +148,41 @@ void esp32_Http()
     //关闭与服务器连接
     httpClient.end();
 }
+void esp32_Http_hitokoto()
+{
+    //创建 HTTPClient 对象
+    HTTPClient httpClient2;
+
+    //配置请求地址。此处也可以不使用端口号和PATH而单纯的
+    httpClient2.begin("https://v1.hitokoto.cn/?encode=text&max_length=10");
+    httpClient2.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
+    Serial.print("https://v1.hitokoto.cn/?encode=text&max_length=10");
+    httpClient2.addHeader("charset", "utf-8");
+    //启动连接并发送HTTP请求
+    int httpCode2 = httpClient2.GET();
+    Serial.print("Send GET request to URL: ");
+
+    //如果服务器响应OK则从服务器获取响应体信息并通过串口输出
+    //如果服务器不响应OK则将服务器响应状态码通过串口输出
+    if (httpCode2 == HTTP_CODE_OK)
+    {
+        //String responsePayload = httpClient.getString();
+        const String &payload2 = httpClient2.getString();
+        Serial.println("Server Response Payload:");
+        Serial.println(payload2);
+        if (payload2 != NULL)
+        {
+            sprintf(hitokoto_final, "%s", payload2.c_str());
+        }
+    }
+    else
+    {
+        Serial.println("Server Respose Code:");
+        Serial.println(httpCode2);
+    }
+    //关闭与服务器连接
+    httpClient2.end();
+}
 //显示屏开关
 void oled_show(const char *str1, const char *str2, const char *str3, const char *str4) //提供三行英文输出
 {
@@ -153,11 +191,21 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
         //char str_sum[100];//不需要日志注释掉
         //char *str = &str_sum[0];//不需要日志注释掉
         u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_ncenB12_tr);
-        u8g2.drawStr(0, 12, str1);
-        u8g2.drawStr(0, 27, str2);
-        u8g2.drawStr(0, 42, str3);
-        u8g2.drawStr(0, 57, str4);
+        //u8g2.setFont(u8g2_font_ncenB12_tr);
+        u8g2.setFont(u8g2_font_wqy16_t_gb2312);
+        //u8g2.drawStr(0, 12, str1);
+        //u8g2.drawStr(0, 27, str2);
+        //u8g2.drawStr(0, 42, str3);
+        // u8g2.drawStr(0, 57, str4);
+        u8g2.setCursor(0, 13);
+        u8g2.print(str1);
+        u8g2.setCursor(0, 30);
+        u8g2.print(str2);
+        u8g2.setCursor(0, 47);
+        u8g2.print(str3);
+        u8g2.setFont(u8g2_font_wqy14_t_gb2312);
+        u8g2.setCursor(0, 62);
+        u8g2.print(str4);
         //sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
         //Serial.println(str);//不需要日志注释掉
         Serial.println("oled_change");
@@ -179,47 +227,57 @@ void print_time() //常驻显示任务,必须循环,否则出事
         //oled_show("error:404", "pls wait", "retrying...", "");
         Serial.println("error:no connect");
         char retry_str[50] = "0";
-        sprintf(retry_str, "retry_num:%d", retry);
+        sprintf(retry_str, "重连次数: %d", retry);
         if (retry % 3 == 1)
         {
-            oled_show("smart_screen", "---bszydxh", "no internet.", retry_str);
+            oled_show("smart_screen", "---bszydxh", "无网络.", retry_str);
         }
         if (retry % 3 == 2)
         {
-            oled_show("smart_screen", "---bszydxh", "no internet..", retry_str);
+            oled_show("smart_screen", "---bszydxh", "无网络..", retry_str);
         }
         if (retry % 3 == 0)
         {
-            oled_show("smart_screen", "---bszydxh", "no internet...", retry_str);
+            oled_show("smart_screen", "---bszydxh", "无网络...", retry_str);
         }
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         retry++;
         if (retry == 20)
         {
             Serial.println("error:no connect");
-            oled_show("smart_screen", "error:sys", "pls wait", "restarting...");
+            oled_show("smart_screen", "系统错误", "请等待", "正在重启...");
             esp_restart();
         }
         return;
     }
-    char str1[30];
-    char str2[30];
-    char str3[30];
-    char strr[30];
-    sprintf(str1, "%4d-%02d-%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday); //整合字符串
-    strftime(str2, 100, "%H:%M:%S", &timeinfo);
-    if (WiFi.status() == WL_CONNECTED)
+    char str1[60];
+    char str2[60];
+    char str3[60];
+    char st[60];
+    char strr[60];
+    char strrr[60];
+    strftime(st, 100, "%a", &timeinfo);
+    sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, st); //整合字符串
+    strftime(strrr, 100, "%H:%M:%S", &timeinfo);
+    if (computer_mode == 0)
     {
-        strftime(strr, 100, "%a ONL", &timeinfo);
-        sprintf(str3, "%s %sC", strr, temp_final);
+        if (WiFi.status() == WL_CONNECTED)
+        {
+            sprintf(str2, "%s 在线", strrr);
+        }
+        else
+        {
+            sprintf(str2, "%s 离线", strrr);
+        }
     }
     else
     {
-        strftime(strr, 100, "%a OFL", &timeinfo);
-        sprintf(str3, "%s %sC", strr, temp_final);
+        sprintf(str2, "%s USB", strrr);
     }
+    //sprintf(str2, "%s %s", strrr, text_final);
+    sprintf(str3, "%s %s℃", text_final, temp_final);
 
-    oled_show(str1, str2, str3, text_final);
+    oled_show(str1, str2, str3, hitokoto_final);
     /*if (ok == 0)
     {
         WiFi.disconnect(true);
@@ -460,6 +518,7 @@ void xTaskOne(void *xTask1)
 {
     while (1)
     {
+
         print_time();
         delay(100);
     }
@@ -479,6 +538,7 @@ void light()
         // Move a single white led
         if (rgb_screen_on == 1 && task2_running == 0)
         {
+            computer_mode = 1;
 #if !USE_MULTCORE
             xTaskCreate(xTaskTwo, "TaskTwo", 4096, NULL, 2, NULL);
 #else
@@ -591,8 +651,9 @@ void setup()
     BLINKER_DEBUG.stream(BLINKER_PRINT);
 #endif
     u8g2.begin();
+    u8g2.enableUTF8Print();
     WiFi.begin(ssid, password);
-    oled_show("smart_screen", "---bszydxh", "finding wifi...", "closing rgb...");
+    oled_show("smart_screen", "---bszydxh", "搜索wifi中...", "初始化灯带...");
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {
         delay(1000);
@@ -600,28 +661,28 @@ void setup()
         Serial.println("no wifi!");
         Serial.println(ssid);
         char retry_str[50] = "0";
-        sprintf(retry_str, "retry_num:%d", retry);
+        sprintf(retry_str, "扫描次数: %d", retry);
         if (retry % 3 == 1)
         {
-            oled_show("smart_screen", "---bszydxh", "no wifi.", retry_str);
+            oled_show("smart_screen", "---bszydxh", "wifi扫描中.", retry_str);
         }
         if (retry % 3 == 2)
         {
-            oled_show("smart_screen", "---bszydxh", "no wifi..", retry_str);
+            oled_show("smart_screen", "---bszydxh", "wifi扫描中..", retry_str);
         }
         if (retry % 3 == 0)
         {
-            oled_show("smart_screen", "---bszydxh", "no wifi...", retry_str);
+            oled_show("smart_screen", "---bszydxh", "wifi扫描中...", retry_str);
         }
         if (retry == 15)
         {
             Serial.println("error:no wifi");
-            oled_show("smart_screen", "error:sys", "pls wait", "restarting...");
+            oled_show("smart_screen", "系统错误", "请等待", "正在重启...");
             esp_restart();
         }
     }
     retry = 0;
-    oled_show("smart_screen", "---bszydxh", "wifi ok...", "loading sys...");
+    oled_show("smart_screen", "---bszydxh", "连接成功", "加载系统中...");
     Serial.println("wifi! done");
     Blinker.begin(auth, ssid, password);
     Blinker.attachData(dataRead);
@@ -656,9 +717,8 @@ void loop()
     {
         esp32_Http();
     }
-    if (timeinfo.tm_sec == 0)
+    if (timeinfo.tm_sec == 45)
     {
-        //scan();
+        esp32_Http_hitokoto();
     }
-    
 }

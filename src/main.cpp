@@ -24,10 +24,12 @@
 //灯光初始化定义
 #define NUM_LEDS 120
 #define DATA_PIN 25
-#define USE_MULTCORE 0
+#define USE_MULTCORE 1
 CRGB leds[NUM_LEDS];
+TaskHandle_t rgb_run;
 ////////////////////////////////////////////////////////////////
 //全局初始化
+int8_t start_setup = 1;
 int retry = 0; //记录重试次数,全局变量
 int ok = 0;
 const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)
@@ -61,7 +63,7 @@ int light_change_color_b = 0xff;
 int light_color_r = 255;
 int light_color_g = 150;
 int light_color_b = 50;
-int8_t computer_mode = 0;
+int8_t task2_running = 0;
 ////////////////////////////////////////////////////////////////
 //蓝牙部分
 // int scanTime = 5; //In seconds
@@ -93,13 +95,57 @@ int8_t computer_mode = 0;
 ////////////////////////////////////////////////////////////////
 //http请求部分,查天气,get
 //
+#define ARDUINOJSON_USE_LONG_LONG 1
 #define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
-char text_final[30] = "正在获取";
-char temp_final[10] = "X";
+char text_final[30] = "   ";
+char covid_final[30] = " ";
+char temp_final[10] = " ";
+char humidity_final[10] = " ";
 char hitokoto_final[100] = "松花酿酒，春水煎茶。";
 ////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////
+void esp32_Http_covid()
+{
+    //创建 HTTPClient 对象
+    HTTPClient httpClient3;
+
+    //配置请求地址。此处也可以不使用端口号和PATH而单纯的
+    httpClient3.begin("https://lab.isaaclin.cn/nCoV/api/area?country=%E4%B8%AD%E5%9B%BD&province=%E9%99%95%E8%A5%BF%E7%9C%81&latest=true");
+    httpClient3.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
+    Serial.print("URL: ");
+    Serial.println("https://lab.isaaclin.cn/nCoV/api/area?country=%E4%B8%AD%E5%9B%BD&province=%E9%99%95%E8%A5%BF%E7%9C%81&latest=trueURL");
+    httpClient3.addHeader("charset", "utf-8");
+    //启动连接并发送HTTP请求
+    int httpCode3 = httpClient3.GET();
+    //如果服务器响应OK则从服务器获取响应体信息并通过串口输出
+    //如果服务器不响应OK则将服务器响应状态码通过串口输出
+    if (httpCode3 == HTTP_CODE_OK)
+    {
+        //String responsePayload = httpClient3.getString();
+        const String &payload3 = httpClient3.getString();
+        Serial.println("Server Response Payload:");
+        Serial.println(payload3);
+        DynamicJsonDocument jsonBuffer3(4096);
+        deserializeJson(jsonBuffer3, payload3);
+        JsonObject root3 = jsonBuffer3.as<JsonObject>();
+        //JsonArray now = root["now"];
+        int covid = root3["results"][0]["cities"][0]["currentConfirmedCount"];
+
+        if (covid != 0)
+        {
+            sprintf(covid_final, "%d", covid);
+        }
+        Serial.println(covid);
+    }
+    else
+    {
+        Serial.println("Server Respose Code:");
+        Serial.println(httpCode3);
+    }
+    //关闭与服务器连接
+    httpClient3.end();
+}
 void esp32_Http()
 {
     //创建 HTTPClient 对象
@@ -130,6 +176,7 @@ void esp32_Http()
         //JsonArray now = root["now"];
         const char *text = root["now"]["text"];
         const char *temp = root["now"]["temp"];
+        const char *humidity = root["now"]["humidity"];
         if (text != NULL)
         {
             sprintf(text_final, "%s", text);
@@ -137,6 +184,10 @@ void esp32_Http()
         if (temp != NULL)
         {
             sprintf(temp_final, "%s", temp);
+        }
+        if (humidity != NULL)
+        {
+            sprintf(humidity_final, "%s", humidity);
         }
         Serial.println(text);
     }
@@ -254,12 +305,11 @@ void print_time() //常驻显示任务,必须循环,否则出事
     char str2[60];
     char str3[60];
     char st[60];
-    char strr[60];
     char strrr[60];
     strftime(st, 100, "%a", &timeinfo);
     sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, st); //整合字符串
     strftime(strrr, 100, "%H:%M:%S", &timeinfo);
-    if (computer_mode == 0)
+    if (task2_running == 0)
     {
         if (WiFi.status() == WL_CONNECTED)
         {
@@ -275,7 +325,14 @@ void print_time() //常驻显示任务,必须循环,否则出事
         sprintf(str2, "%s USB", strrr);
     }
     //sprintf(str2, "%s %s", strrr, text_final);
-    sprintf(str3, "%s %s℃", text_final, temp_final);
+    if (timeinfo.tm_sec % 10 >= 5)
+    {
+        sprintf(str3, "%s %s℃ 确诊:%s", text_final, temp_final, covid_final);
+    }
+    else
+    {
+        sprintf(str3, "%s %s%% 西安长安", text_final, humidity_final);
+    }
 
     oled_show(str1, str2, str3, hitokoto_final);
     /*if (ok == 0)
@@ -449,6 +506,11 @@ void miotMode(uint8_t mode_mi)
 
     if (mode_mi == BLINKER_CMD_MIOT_DAY)
     {
+        if (task2_running == 1)
+        {
+            vTaskDelete(rgb_run);
+            task2_running = 0;
+        }
         light_color_r = 255;
         light_color_g = 150;
         light_color_b = 50;
@@ -464,6 +526,11 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_NIGHT)
     {
+        if (task2_running == 1)
+        {
+            vTaskDelete(rgb_run);
+            task2_running = 0;
+        }
         light_color_r = 0;
         light_color_g = 0;
         light_color_b = 255;
@@ -491,6 +558,11 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_READING)
     {
+        if (task2_running == 1)
+        {
+            vTaskDelete(rgb_run);
+            task2_running = 0;
+        }
 
         light_color_r = 255;
         light_color_g = 150;
@@ -518,17 +590,48 @@ void xTaskOne(void *xTask1)
 {
     while (1)
     {
-
         print_time();
-        delay(100);
+        delay(300);
     }
 }
-int8_t task2_running = 0;
+
 void xTaskTwo(void *xTask2)
 {
     while (1)
     {
         rgb_screen();
+    }
+}
+void xTaskThree(void *xTask3)
+{
+    while (1)
+    {
+        Blinker.run();
+        delay(10);
+    }
+}
+void xTaskFour(void *xTask4)
+{
+    while (1)
+    {
+        delay(200);
+        if (start_setup == 1)
+        {
+            // delay(1000);
+            esp32_Http();
+            esp32_Http_hitokoto();
+            esp32_Http_covid();
+            start_setup = 0;
+        }
+        if (timeinfo.tm_min % 3 == 0 && timeinfo.tm_sec == 0)
+        {
+            esp32_Http();
+        }
+        if (timeinfo.tm_sec == 45)
+        {
+            esp32_Http_hitokoto();
+            esp32_Http_covid();
+        }
     }
 }
 void light()
@@ -538,14 +641,15 @@ void light()
         // Move a single white led
         if (rgb_screen_on == 1 && task2_running == 0)
         {
-            computer_mode = 1;
+            rgb_screen_on = 0;
+            task2_running = 1;
+            Serial.println("light");
 #if !USE_MULTCORE
             xTaskCreate(xTaskTwo, "TaskTwo", 4096, NULL, 2, NULL);
 #else
-            xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, 2, NULL, 0);
+            xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, -1, &rgb_run, 1);
 #endif
-            rgb_screen_on = 0;
-            task2_running = 1;
+
             return;
         }
         if (mode == 1 || mode == 3)
@@ -694,13 +798,9 @@ void setup()
     BlinkerMIOT.attachBrightness(miotBright);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
-#if !USE_MULTCORE
-    xTaskCreate(xTaskOne, "TaskOne", 4096, NULL, 1, NULL);
-    //xTaskCreate(xTaskTwo, "TaskTwo", 4096, NULL, 2, NULL);
-#else
-    xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 4096, NULL, 1, NULL, 1);
-    //xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, 2, NULL, 1);
-#endif
+    xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 2048, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(xTaskThree, "TaskThree", 10240, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(xTaskFour, "TaskFour", 10240, NULL, 0, NULL, 0);
     //esp32_Http();
     // BLEDevice::init("");
     // pBLEScan = BLEDevice::getScan(); //create new scan
@@ -711,14 +811,7 @@ void setup()
 }
 void loop()
 {
-    Blinker.run(); //wifi blinker自动处理 不用管
+    //Blinker.run(); //wifi blinker自动处理 不用管
     light();
-    if (timeinfo.tm_min % 3 == 0 && timeinfo.tm_sec == 0)
-    {
-        esp32_Http();
-    }
-    if (timeinfo.tm_sec == 45)
-    {
-        esp32_Http_hitokoto();
-    }
+    delay(100);
 }

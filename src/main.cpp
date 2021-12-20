@@ -327,11 +327,11 @@ void print_time() //常驻显示任务,必须循环,否则出事
     //sprintf(str2, "%s %s", strrr, text_final);
     if (timeinfo.tm_sec % 10 >= 5)
     {
-        sprintf(str3, "%s %s℃ 确诊:%s", text_final, temp_final, covid_final);
+        sprintf(str3, "%s|%s℃ 确诊:%s", text_final, temp_final, covid_final);
     }
     else
     {
-        sprintf(str3, "%s %s%% 西安长安", text_final, humidity_final);
+        sprintf(str3, "%s|%s%% 西安", text_final, humidity_final);
     }
 
     oled_show(str1, str2, str3, hitokoto_final);

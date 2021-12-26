@@ -48,8 +48,10 @@ BlinkerNumber Number1("num-abc");
 BlinkerRGB RGB1("col-6ok");
 ////////////////////////////////////////////////////////////////
 //灯光状态部分,字面意思
-int8_t light_on = 1;
-int8_t mode = 0;
+int8_t oled_on = 1;  //显示屏开关
+int8_t light_on = 0; //灯带开关,用于状态回调,修改该值不能控制
+int8_t mode = 0;     //!!!!灯光改变模式,并非小爱指定的模式!!!!
+int8_t mi_mode = 0;  //小爱指定的模式,用于回调,与逻辑耦合的不是那么深,默认日光
 int8_t light_change = 0;
 int light_now_brightness = 255;
 int light_change_brightness = 255;
@@ -57,6 +59,7 @@ int light_brightness = 255;
 int light_now_color_r = 0;
 int light_now_color_g = 0;
 int light_now_color_b = 0;
+int32_t light_now = 0;
 int light_change_color_r = 0xff;
 int light_change_color_g = 0xff;
 int light_change_color_b = 0xff;
@@ -65,7 +68,7 @@ int light_color_g = 150;
 int light_color_b = 50;
 int8_t task2_running = 0;
 ////////////////////////////////////////////////////////////////
-//蓝牙部分
+//蓝牙部分//堆溢出,算了
 // int scanTime = 5; //In seconds
 // int scan_ok = 0;
 // BLEScan *pBLEScan;
@@ -237,7 +240,7 @@ void esp32_Http_hitokoto()
 //显示屏开关
 void oled_show(const char *str1, const char *str2, const char *str3, const char *str4) //提供三行英文输出
 {
-    if (light_on == 1)
+    if (oled_on == 1)
     {
         //char str_sum[100];//不需要日志注释掉
         //char *str = &str_sum[0];//不需要日志注释掉
@@ -262,7 +265,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
         Serial.println("oled_change");
         u8g2.sendBuffer();
     }
-    else if (light_on == 0)
+    else if (oled_on == 0)
     {
         u8g2.clearBuffer();
         u8g2.sendBuffer();
@@ -327,7 +330,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
     //sprintf(str2, "%s %s", strrr, text_final);
     if (timeinfo.tm_sec % 10 >= 5)
     {
-        sprintf(str3, "%s|%s℃ 确诊:%s", text_final, temp_final, covid_final);
+        sprintf(str3, "%s|%s℃ %s", text_final, temp_final, covid_final);
     }
     else
     {
@@ -336,7 +339,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
 
     oled_show(str1, str2, str3, hitokoto_final);
     /*if (ok == 0)
-    {
+    w{
         WiFi.disconnect(true);
         WiFi.mode(WIFI_OFF);
         ok = 1;
@@ -441,6 +444,7 @@ void miotPowerState(const String &state)
     if (state == BLINKER_CMD_ON)
     {
         light_on = 1;
+        oled_on = 1;
         Serial.println("light on");
         light_change = 1;
         mode = 1;
@@ -454,6 +458,7 @@ void miotPowerState(const String &state)
         Serial.println("light off");
         light_change = 1;
         mode = 0;
+        oled_on = 0;
         light_on = 0;
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
@@ -462,10 +467,11 @@ void miotPowerState(const String &state)
 void miotColor(int32_t color)
 {
     BLINKER_LOG("need set color: ", color);
-
-    int32_t colorR = color >> 16 & 0xFF;
-    int32_t colorG = color >> 8 & 0xFF;
-    int32_t colorB = color & 0xFF;
+    light_on = 1; //强制开启
+    light_now = color;
+    uint8_t colorR = color >> 16 & 0xFF;
+    uint8_t colorG = color >> 8 & 0xFF;
+    uint8_t colorB = color & 0xFF;
     Serial.println("color change");
     BLINKER_LOG("colorR: ", colorR, ", colorG: ", colorG, ", colorB: ", colorB);
     light_color_r = colorR;
@@ -503,7 +509,7 @@ void miotBright(const String &bright)
 void miotMode(uint8_t mode_mi)
 {
     BLINKER_LOG("need set mode: ", mode_mi);
-
+    mi_mode = mode_mi;
     if (mode_mi == BLINKER_CMD_MIOT_DAY)
     {
         if (task2_running == 1)
@@ -585,6 +591,56 @@ void miotMode(uint8_t mode_mi)
     }
     BlinkerMIOT.mode(mode_mi);
     BlinkerMIOT.print();
+}
+void miotQuery(int32_t queryCode)
+{
+    BLINKER_LOG("MIOT Query codes: ", queryCode);
+
+    switch (queryCode)
+    {
+    case BLINKER_CMD_QUERY_ALL_NUMBER:
+        BLINKER_LOG("MIOT Query All");
+        BlinkerMIOT.powerState(light_on ? "on" : "off");
+        BlinkerMIOT.color(light_now);
+        BlinkerMIOT.mode(mi_mode);
+        //BlinkerMIOT.colorTemp(1000);
+        BlinkerMIOT.brightness(light_now_brightness);
+        BlinkerMIOT.print();
+        break;
+    case BLINKER_CMD_QUERY_POWERSTATE_NUMBER:
+        BLINKER_LOG("MIOT Query Power State");
+        BlinkerMIOT.powerState(light_on ? "on" : "off");
+        BlinkerMIOT.print();
+        break;
+    case BLINKER_CMD_QUERY_COLOR_NUMBER:
+        BLINKER_LOG("MIOT Query Color");
+        BlinkerMIOT.color(light_now);
+        BlinkerMIOT.print();
+        break;
+    case BLINKER_CMD_QUERY_MODE_NUMBER:
+        BLINKER_LOG("MIOT Query Mode");
+        BlinkerMIOT.mode(mi_mode);
+        BlinkerMIOT.print();
+        break;
+    case BLINKER_CMD_QUERY_COLORTEMP_NUMBER:
+        BLINKER_LOG("MIOT Query ColorTemperature");
+        //BlinkerMIOT.colorTemp(1000);
+        BlinkerMIOT.print();
+        break;
+    case BLINKER_CMD_QUERY_BRIGHTNESS_NUMBER:
+        BLINKER_LOG("MIOT Query Brightness");
+        BlinkerMIOT.brightness(light_now_brightness);
+        BlinkerMIOT.print();
+        break;
+    default:
+        BlinkerMIOT.powerState(light_on ? "on" : "off");
+        BlinkerMIOT.color(light_now);
+        BlinkerMIOT.mode(mi_mode);
+        //BlinkerMIOT.colorTemp(1000);
+        BlinkerMIOT.brightness(light_now_brightness);
+        BlinkerMIOT.print();
+        break;
+    }
 }
 void xTaskOne(void *xTask1)
 {
@@ -796,6 +852,7 @@ void setup()
     BlinkerMIOT.attachColor(miotColor);
     BlinkerMIOT.attachMode(miotMode);
     BlinkerMIOT.attachBrightness(miotBright);
+    BlinkerMIOT.attachQuery(miotQuery);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
     xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 2048, NULL, 1, NULL, 0);

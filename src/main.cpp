@@ -1,3 +1,9 @@
+/*
+引脚配置:
+13 -> 显示屏时钟信号(scl)
+14 -> 显示屏数据信号(sda)
+25 -> 灯带pwm信号
+*/
 #include <Arduino.h> //主依赖,具体依赖见依赖树
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖

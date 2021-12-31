@@ -54,10 +54,11 @@ BlinkerNumber Number1("num-abc");
 BlinkerRGB RGB1("col-6ok");
 ////////////////////////////////////////////////////////////////
 //灯光状态部分,字面意思
-int8_t oled_on = 1;  //显示屏开关
-int8_t light_on = 0; //灯带开关,用于状态回调,修改该值不能控制
-int8_t mode = 0;     //!!!!灯光改变模式,并非小爱指定的模式!!!!
-int8_t mi_mode = 0;  //小爱指定的模式,用于回调,与逻辑耦合的不是那么深,默认日光
+int8_t oled_on = 1;        //显示屏开关
+int8_t light_on = 0;       //灯带开关,用于状态回调,修改该值不能控制
+int8_t mode = 0;           //!!!!灯光改变模式,并非小爱指定的模式!!!!
+int8_t mi_mode = 0;        //小爱指定的模式,用于回调,与逻辑耦合的不是那么深,默认日光
+int mi_light_bright = 100; //小爱指定的亮度,用于回调,与逻辑耦合的不是那么深,默认100
 int8_t light_change = 0;
 int light_now_brightness = 255;
 int light_change_brightness = 255;
@@ -503,6 +504,7 @@ void miotColor(int32_t color)
 }
 void miotBright(const String &bright)
 {
+    mi_light_bright = bright.toInt();
     BLINKER_LOG("need set brightness: ", bright);
     light_brightness = bright.toInt() / 2 + bright.toInt() * 2;
     mode = 3;
@@ -610,7 +612,7 @@ void miotQuery(int32_t queryCode)
         BlinkerMIOT.color(light_now);
         BlinkerMIOT.mode(mi_mode);
         //BlinkerMIOT.colorTemp(1000);
-        BlinkerMIOT.brightness(light_now_brightness);
+        BlinkerMIOT.brightness(mi_light_bright);
         BlinkerMIOT.print();
         break;
     case BLINKER_CMD_QUERY_POWERSTATE_NUMBER:
@@ -635,7 +637,7 @@ void miotQuery(int32_t queryCode)
         break;
     case BLINKER_CMD_QUERY_BRIGHTNESS_NUMBER:
         BLINKER_LOG("MIOT Query Brightness");
-        BlinkerMIOT.brightness(light_now_brightness);
+        BlinkerMIOT.brightness(mi_light_bright);
         BlinkerMIOT.print();
         break;
     default:
@@ -643,7 +645,7 @@ void miotQuery(int32_t queryCode)
         BlinkerMIOT.color(light_now);
         BlinkerMIOT.mode(mi_mode);
         //BlinkerMIOT.colorTemp(1000);
-        BlinkerMIOT.brightness(light_now_brightness);
+        BlinkerMIOT.brightness(mi_light_bright);
         BlinkerMIOT.print();
         break;
     }
@@ -679,7 +681,7 @@ void xTaskFour(void *xTask4)
         delay(200);
         if (start_setup == 1)
         {
-            // delay(1000);
+            delay(10000);
             esp32_Http();
             esp32_Http_hitokoto();
             esp32_Http_covid();

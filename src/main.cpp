@@ -8,20 +8,20 @@
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖
 #include "U8g2lib.h"
-#include "WiFi.h"             //Blinker.h依赖
-#include "ESPmDNS.h"          //Blinker.h依赖
-#include "FS.h"               //Blinker.h依赖
-#include "SPIFFS.h"           //Blinker.h依赖
-#include "Ticker.h"           //Blinker.h依赖
-#include "Update.h"           //Blinker.h依赖
-#include "WiFiClientSecure.h" //Blinker.h依赖
-#include "EEPROM.h"           //Blinker.h依赖
+#include "WiFi.h"                //Blinker.h依赖
+#include "ESPmDNS.h"             //Blinker.h依赖
+#include "FS.h"                  //Blinker.h依赖
+#include "SPIFFS.h"              //Blinker.h依赖
+#include "Ticker.h"              //Blinker.h依赖
+#include "Update.h"              //Blinker.h依赖
+#include "WiFiClientSecure.h"    //Blinker.h依赖
+#include "EEPROM.h"              //Blinker.h依赖
 // #include <BLEDevice.h>           //蓝牙依赖
 // #include <BLEUtils.h>            //蓝牙依赖
 // #include <BLEScan.h>             //蓝牙依赖
 // #include <BLEAdvertisedDevice.h> //蓝牙依赖
-#define BLINKER_PRINT Serial //Blinker.h依赖
-#define BLINKER_WIFI         //Blinker.h依赖
+#define BLINKER_PRINT Serial     //Blinker.h依赖
+#define BLINKER_WIFI             //Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "HTTPClient.h"
 #include "Blinker.h"
@@ -75,7 +75,7 @@ int light_color_g = 150;
 int light_color_b = 50;
 int8_t task2_running = 0;
 ////////////////////////////////////////////////////////////////
-//蓝牙部分//堆溢出,算了
+// 蓝牙部分//堆溢出,算了
 // int scanTime = 5; //In seconds
 // int scan_ok = 0;
 // BLEScan *pBLEScan;
@@ -119,7 +119,6 @@ void esp32_Http_covid()
 {
     //创建 HTTPClient 对象
     HTTPClient httpClient3;
-
     //配置请求地址。此处也可以不使用端口号和PATH而单纯的
     httpClient3.begin("https://lab.isaaclin.cn/nCoV/api/area?country=%E4%B8%AD%E5%9B%BD&province=%E9%99%95%E8%A5%BF%E7%9C%81&latest=true");
     httpClient3.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
@@ -650,7 +649,7 @@ void miotQuery(int32_t queryCode)
         break;
     }
 }
-void xTaskOne(void *xTask1)
+void xTaskOne(void *xTask1) //显示屏任务
 {
     while (1)
     {
@@ -659,14 +658,14 @@ void xTaskOne(void *xTask1)
     }
 }
 
-void xTaskTwo(void *xTask2)
+void xTaskTwo(void *xTask2) //流光溢彩任务
 {
     while (1)
     {
         rgb_screen();
     }
 }
-void xTaskThree(void *xTask3)
+void xTaskThree(void *xTask3) //blinker任务
 {
     while (1)
     {
@@ -674,7 +673,7 @@ void xTaskThree(void *xTask3)
         delay(10);
     }
 }
-void xTaskFour(void *xTask4)
+void xTaskFour(void *xTask4) //巨型http请求模块任务
 {
     while (1)
     {
@@ -698,12 +697,17 @@ void xTaskFour(void *xTask4)
         }
     }
 }
+// void xTaskFive(void *xTask5) //蓝牙任务
+// {
+//         BLEDevice::init("esp32");
+//         vTaskDelete(NULL);
+// }
 void light()
 {
-    if (light_change == 1) //1 全色
+    if (light_change == 1 && task2_running == 0) //1 全色
     {
         // Move a single white led
-        if (rgb_screen_on == 1 && task2_running == 0)
+        if (rgb_screen_on == 1)
         {
             rgb_screen_on = 0;
             task2_running = 1;
@@ -807,11 +811,25 @@ void light()
         }
     }
 }
+void xTaskSix(void *xTask6) //蓝牙任务
+{
+    while (1)
+    {
+        light();
+        delay(100);
+    }
+}
 void setup()
 {
     Serial.begin(115200);
     Serial.println("bszydxh esp32 start!");
     WiFi.mode(WIFI_STA);
+    //BLEDevice::init("esp32");
+    // pBLEScan = BLEDevice::getScan(); //create new scan
+    // pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    // pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
+    // pBLEScan->setInterval(1000);
+    // pBLEScan->setWindow(99); // less or equal setInterval value
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(255);
 
@@ -821,6 +839,7 @@ void setup()
     u8g2.begin();
     u8g2.enableUTF8Print();
     WiFi.begin(ssid, password);
+    
     oled_show("smart_screen", "---bszydxh", "搜索wifi中...", "初始化灯带...");
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {
@@ -864,19 +883,16 @@ void setup()
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
     xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 2048, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(xTaskThree, "TaskThree", 10240, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(xTaskFour, "TaskFour", 10240, NULL, 0, NULL, 0);
-    //esp32_Http();
-    // BLEDevice::init("");
-    // pBLEScan = BLEDevice::getScan(); //create new scan
-    // pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-    // pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
-    // pBLEScan->setInterval(1000);
-    // pBLEScan->setWindow(99); // less or equal setInterval value
+    xTaskCreatePinnedToCore(xTaskThree, "TaskThree", 7168, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(xTaskFour, "TaskFour", 5120, NULL, 0, NULL, 0);
+    // xTaskCreatePinnedToCore(xTaskFive, "TaskFive", 10240, NULL, 0, NULL, 0);
+    xTaskCreatePinnedToCore(xTaskSix, "TaskSix", 1024, NULL, -1, NULL, 1);
 }
 void loop()
 {
     //Blinker.run(); //wifi blinker自动处理 不用管
-    light();
-    delay(100);
+    //light();
+    //Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
+    //Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
+    delay(500);
 }

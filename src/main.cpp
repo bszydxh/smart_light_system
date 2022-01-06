@@ -8,20 +8,20 @@
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖
 #include "U8g2lib.h"
-#include "WiFi.h"                //Blinker.h依赖
-#include "ESPmDNS.h"             //Blinker.h依赖
-#include "FS.h"                  //Blinker.h依赖
-#include "SPIFFS.h"              //Blinker.h依赖
-#include "Ticker.h"              //Blinker.h依赖
-#include "Update.h"              //Blinker.h依赖
-#include "WiFiClientSecure.h"    //Blinker.h依赖
-#include "EEPROM.h"              //Blinker.h依赖
+#include "WiFi.h"             //Blinker.h依赖
+#include "ESPmDNS.h"          //Blinker.h依赖
+#include "FS.h"               //Blinker.h依赖
+#include "SPIFFS.h"           //Blinker.h依赖
+#include "Ticker.h"           //Blinker.h依赖
+#include "Update.h"           //Blinker.h依赖
+#include "WiFiClientSecure.h" //Blinker.h依赖
+#include "EEPROM.h"           //Blinker.h依赖
 // #include <BLEDevice.h>           //蓝牙依赖
 // #include <BLEUtils.h>            //蓝牙依赖
 // #include <BLEScan.h>             //蓝牙依赖
 // #include <BLEAdvertisedDevice.h> //蓝牙依赖
-#define BLINKER_PRINT Serial     //Blinker.h依赖
-#define BLINKER_WIFI             //Blinker.h依赖
+#define BLINKER_PRINT Serial //Blinker.h依赖
+#define BLINKER_WIFI         //Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "HTTPClient.h"
 #include "Blinker.h"
@@ -54,7 +54,7 @@ BlinkerNumber Number1("num-abc");
 BlinkerRGB RGB1("col-6ok");
 ////////////////////////////////////////////////////////////////
 //灯光状态部分,字面意思
-int8_t oled_mode = 1;        //显示屏模式 1 正常 0 关闭 2 欢迎(新增)
+int8_t oled_mode = 1;      //显示屏模式 1 正常 0 关闭 2 欢迎(新增)
 int8_t light_on = 0;       //灯带开关,用于状态回调,修改该值不能控制
 int8_t mode = 0;           //!!!!灯光改变模式,并非小爱指定的模式!!!!
 int8_t mi_mode = 0;        //小爱指定的模式,用于回调,与逻辑耦合的不是那么深,默认日光
@@ -66,7 +66,7 @@ int light_brightness = 255;
 int light_now_color_r = 0;
 int light_now_color_g = 0;
 int light_now_color_b = 0;
-int32_t light_now = 0;
+int32_t light_now = (255 * 256 + 150) * 256 + 50;
 int light_change_color_r = 0xff;
 int light_change_color_g = 0xff;
 int light_change_color_b = 0xff;
@@ -378,24 +378,24 @@ int counter = 0; //官方计数
 int rgb_screen_on = 0;
 void button1_callback(const String &state)
 {
-    BLINKER_LOG("get button state:", state);
     Serial.print("Ada\n");
     rgb_screen_on = 1;
     light_change = 1;
-    Serial.println("button done");
-    //oled_show("", "", "button on");
 }
 void rgb1_callback(uint8_t r_value, uint8_t g_value, uint8_t b_value, uint8_t bright_value)
 {
-    BLINKER_LOG("R value: ", r_value);
-    BLINKER_LOG("G value: ", g_value);
-    BLINKER_LOG("B value: ", b_value);
-    BLINKER_LOG("Rrightness value: ", bright_value);
-    light_brightness = bright_value;
-    light_color_r = (int)r_value;
-    light_color_g = (int)g_value;
-    light_color_b = (int)b_value;
-    Serial.println("rgb change");
+    light_on = 1; //强制开启
+    light_now = (r_value * 256 + g_value) * 256 + b_value;
+    Serial.println("color change");
+    light_color_r = r_value;
+    light_color_g = g_value;
+    light_color_b = b_value;
+    Serial.print("blinker_color||r:");
+    Serial.print(light_color_r);
+    Serial.print("  g:");
+    Serial.print(light_color_g);
+    Serial.print("  b:");
+    Serial.println(light_color_b);
     light_change = 1;
     mode = 3;
 }
@@ -500,6 +500,7 @@ void miotColor(int32_t color)
     uint8_t colorR = color >> 16 & 0xFF;
     uint8_t colorG = color >> 8 & 0xFF;
     uint8_t colorB = color & 0xFF;
+    Serial.printf("set color: %d\n", color);
     Serial.println("color change");
     BLINKER_LOG("colorR: ", colorR, ", colorG: ", colorG, ", colorB: ", colorB);
     light_color_r = colorR;
@@ -861,7 +862,7 @@ void setup()
     u8g2.begin();
     u8g2.enableUTF8Print();
     WiFi.begin(ssid, password);
-    
+
     oled_show("smart_screen", "---bszydxh", "搜索wifi中...", "初始化灯带...");
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {

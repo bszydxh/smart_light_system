@@ -54,7 +54,7 @@ BlinkerNumber Number1("num-abc");
 BlinkerRGB RGB1("col-6ok");
 ////////////////////////////////////////////////////////////////
 //灯光状态部分,字面意思
-int8_t oled_on = 1;        //显示屏开关
+int8_t oled_mode = 1;        //显示屏模式 1 正常 0 关闭 2 欢迎(新增)
 int8_t light_on = 0;       //灯带开关,用于状态回调,修改该值不能控制
 int8_t mode = 0;           //!!!!灯光改变模式,并非小爱指定的模式!!!!
 int8_t mi_mode = 0;        //小爱指定的模式,用于回调,与逻辑耦合的不是那么深,默认日光
@@ -246,7 +246,7 @@ void esp32_Http_hitokoto()
 //显示屏开关
 void oled_show(const char *str1, const char *str2, const char *str3, const char *str4) //提供三行英文输出
 {
-    if (oled_on == 1)
+    if (oled_mode == 1)
     {
         //char str_sum[100];//不需要日志注释掉
         //char *str = &str_sum[0];//不需要日志注释掉
@@ -271,11 +271,33 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
         Serial.println("oled_change");
         u8g2.sendBuffer();
     }
-    else if (oled_on == 0)
+    else if (oled_mode == 0)
     {
         u8g2.clearBuffer();
         u8g2.sendBuffer();
         Serial.println("oled_off");
+    }
+    else if (oled_mode == 2)
+    {
+        //char str_sum[100];//不需要日志注释掉
+        //char *str = &str_sum[0];//不需要日志注释掉
+        u8g2.clearBuffer();
+        u8g2.setFont(u8g2_font_wqy16_t_gb2312);
+        u8g2.setCursor(0, 13);
+        u8g2.print("欢迎回来 bszydxh");
+        u8g2.setCursor(0, 30);
+        u8g2.print("灯带就绪...");
+        u8g2.setCursor(0, 47);
+        u8g2.print("显示屏就绪...");
+        u8g2.setFont(u8g2_font_wqy14_t_gb2312);
+        u8g2.setCursor(0, 62);
+        u8g2.print(str4);
+        //sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+        //Serial.println(str);//不需要日志注释掉
+        Serial.println("oled_change");
+        u8g2.sendBuffer();
+        delay(700);
+        oled_mode = 1; //欢迎完正常
     }
 }
 struct tm timeinfo;
@@ -450,7 +472,7 @@ void miotPowerState(const String &state)
     if (state == BLINKER_CMD_ON)
     {
         light_on = 1;
-        oled_on = 1;
+        oled_mode = 2;
         Serial.println("light on");
         light_change = 1;
         mode = 1;
@@ -464,7 +486,7 @@ void miotPowerState(const String &state)
         Serial.println("light off");
         light_change = 1;
         mode = 0;
-        oled_on = 0;
+        oled_mode = 0;
         light_on = 0;
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();

@@ -4,6 +4,7 @@
 14 -> 显示屏数据信号(sda)
 25 -> 灯带pwm信号
 */
+/*系统由freertos接管*/
 #include <Arduino.h> //主依赖,具体依赖见依赖树
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖
@@ -33,10 +34,12 @@
 #define USE_MULTCORE 1
 CRGB leds[NUM_LEDS];
 TaskHandle_t rgb_run;
+TaskHandle_t sitclock_run;
 ////////////////////////////////////////////////////////////////
 //全局初始化
 int8_t start_setup = 1;
-int retry = 0; //记录重试次数,全局变量
+struct tm timeinfo; //时间信息
+int retry = 0;      //记录重试次数,全局变量
 int ok = 0;
 const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)
 const char *password = "21009200835";
@@ -114,7 +117,57 @@ char temp_final[10] = " ";
 char humidity_final[10] = " ";
 char hitokoto_final[100] = "松花酿酒，春水煎茶。";
 ////////////////////////////////////////////////////////////////
-
+//久坐提醒部分,默认1h
+//算是手写看门狗...咬自己...
+int target_hour = -1;
+int target_min = -1;
+int sitclock_on = 0; //状态指示
+void reset_sitclock() //重置看门钟
+{
+    Serial.println("set_clock");
+    if (timeinfo.tm_hour == 23)
+    {
+        target_hour = 0;
+    }
+    else
+    {
+        target_hour = timeinfo.tm_hour + 1;
+    }
+    target_min = timeinfo.tm_min;
+}
+void sitclock_task(void *sitclock_task_pointer);
+void on_sitclock()   //跟开灯绑定(含类似行为)
+{
+    reset_sitclock();
+    if (sitclock_on == 0)
+    {
+        xTaskCreatePinnedToCore(sitclock_task, "setclockTask", 1024, NULL, 0, &sitclock_run, 0);
+    }
+    sitclock_on = 1;
+    Serial.println("sitclock start!");
+}
+void off_sitclock() //跟关灯绑定
+{
+    if (sitclock_on != 0)
+    {
+        Serial.println("sitclock off!");
+        sitclock_on = 0;
+        vTaskDelete(sitclock_run);
+        target_hour = -1;
+        target_min = -1;
+    }
+}
+int is_sitclock() //
+{
+    if (sitclock_on == 1)
+    {
+        if (timeinfo.tm_hour == target_hour && timeinfo.tm_min == target_min)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
 ////////////////////////////////////////////////////////////////
 void esp32_Http_covid()
 {
@@ -301,7 +354,6 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
         oled_mode = 1; //欢迎完正常
     }
 }
-struct tm timeinfo;
 void print_time() //常驻显示任务,必须循环,否则出事
 {
 
@@ -744,7 +796,7 @@ void light()
 
             return;
         }
-        if (mode == 1 || mode == 3)
+        if (mode == 1 || mode == 3) //换亮度/色彩
         {
             for (int8_t n = 1; n <= 24; n++)
             {
@@ -835,12 +887,23 @@ void light()
         }
     }
 }
-void xTaskSix(void *xTask6) //蓝牙任务
+void xTaskSix(void *xTask6) //灯条任务
 {
     while (1)
     {
         light();
         delay(100);
+    }
+}
+void sitclock_task(void *sitclock_task_pointer)
+{
+    while (1)
+    {
+        if (is_sitclock() == 1)
+        {
+            //久坐之后的操作
+            reset_sitclock();
+        }
     }
 }
 void setup()
@@ -909,7 +972,6 @@ void setup()
     xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 2048, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(xTaskThree, "TaskThree", 7168, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(xTaskFour, "TaskFour", 5120, NULL, 0, NULL, 0);
-    // xTaskCreatePinnedToCore(xTaskFive, "TaskFive", 10240, NULL, 0, NULL, 0);
     xTaskCreatePinnedToCore(xTaskSix, "TaskSix", 1024, NULL, -1, NULL, 1);
 }
 void loop()
@@ -918,5 +980,5 @@ void loop()
     //light();
     //Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
     //Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
-    delay(500);
+    delay(500); //踢看门狗,lopp本质上也是freertos中的一个任务
 }

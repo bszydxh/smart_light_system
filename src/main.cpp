@@ -74,6 +74,7 @@ int light_color_r = 255;
 int light_color_g = 150;
 int light_color_b = 50;
 int8_t task2_running = 0;
+
 ////////////////////////////////////////////////////////////////
 // 蓝牙部分//堆溢出,算了
 // int scanTime = 5; //In seconds

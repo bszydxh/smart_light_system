@@ -137,6 +137,17 @@ void reset_sitclock() //重置看门钟
     target_min = timeinfo.tm_min;
     Serial.printf("set_clock:%d:%d\n", target_hour, target_min);
 }
+void reset_sitclock_limit()
+{
+    target_hour = timeinfo.tm_hour;
+    target_min = timeinfo.tm_min + 10;
+    if (target_min >= 60)
+    {
+        target_min = target_min - 60;
+        target_hour++;
+    }
+    Serial.printf("set_clock_limit:%d:%d\n", target_hour, target_min);
+}
 //void sitclock_task(void *sitclock_task_pointer);
 void off_sitclock() //跟关灯绑定
 {
@@ -173,16 +184,16 @@ void sitclock_task(void *sitclock_task_pointer)
             light_change = 1;
             oled_mode = 3;
             blink_time = 5;
-            reset_sitclock();
+            reset_sitclock_limit();
         }
         delay(5000);
     }
 }
 void on_sitclock() //跟开灯绑定(含类似行为)
 {
-    reset_sitclock();
     if (sitclock_on == 0)
     {
+        reset_sitclock();
         xTaskCreatePinnedToCore(sitclock_task, "setclockTask", 2048, NULL, 0, &sitclock_run, 0);
     }
     sitclock_on = 1;

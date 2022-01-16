@@ -9,6 +9,7 @@
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖
 #include "U8g2lib.h"
+#include "freertos.h"
 #include "WiFi.h"             //Blinker.h依赖
 #include "ESPmDNS.h"          //Blinker.h依赖
 #include "FS.h"               //Blinker.h依赖
@@ -27,6 +28,8 @@
 #include "HTTPClient.h"
 #include "Blinker.h"
 #include "FastLED.h"
+#include "WiFiUdp.h"
+#include "esp_task_wdt.h"
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义
 #define NUM_LEDS 120
@@ -37,6 +40,7 @@ TaskHandle_t rgb_run;
 TaskHandle_t sitclock_run;
 ////////////////////////////////////////////////////////////////
 //全局初始化
+WiFiUDP Udp;
 int8_t start_setup = 1;
 struct tm timeinfo; //时间信息
 int retry = 0;      //记录重试次数,全局变量
@@ -521,7 +525,7 @@ void rgb_screen()
     {
     waitLoop:
         while (!Serial.available())
-            ;
+            esp_task_wdt_feed();
         ;
         // Check next byte in Magic Word
         if (prefix[i] == Serial.read())
@@ -533,15 +537,15 @@ void rgb_screen()
 
     // Hi, Lo, Checksum
     while (!Serial.available())
-        ;
+        esp_task_wdt_feed();
     ;
     hi = Serial.read();
     while (!Serial.available())
-        ;
+        esp_task_wdt_feed();
     ;
     lo = Serial.read();
     while (!Serial.available())
-        ;
+        esp_task_wdt_feed();
     ;
     chk = Serial.read();
     //检查校验码
@@ -556,13 +560,13 @@ void rgb_screen()
     {
         byte r, g, b;
         while (!Serial.available()) //读取阻断
-            ;
+            esp_task_wdt_feed();
         r = Serial.read();
         while (!Serial.available()) //读取阻断
-            ;
+            esp_task_wdt_feed();
         g = Serial.read();
         while (!Serial.available()) //读取阻断
-            ;
+            esp_task_wdt_feed();
         b = Serial.read();
         leds[i].r = r;
         leds[i].g = g;
@@ -590,6 +594,11 @@ void miotPowerState(const String &state)
     else if (state == BLINKER_CMD_OFF)
     {
         //oled_show("", "", "light off");
+        if (task2_running == 1)
+        {
+            vTaskDelete(rgb_run);
+            task2_running = 0;
+        }
         Serial.println("light off");
         off_sitclock();
         light_change = 1;
@@ -704,7 +713,27 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_TV)
     {
-        // Your mode function
+        if (task2_running == 1)
+        {
+            vTaskDelete(rgb_run);
+            task2_running = 0;
+        }
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("turn_off");                    //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        Serial.println("UDP数据发送成功");
+        //oled_show("", "", "light off");
+        Serial.println("light off");
+        off_sitclock();
+        delay(4000);
+        light_change = 1;
+        mode = 0;
+        oled_mode = 0;
+        light_on = 0;
+        //向udp工具发送消息
+
+        BlinkerMIOT.powerState("off");
+        BlinkerMIOT.print();
     }
     else if (mode_mi == BLINKER_CMD_MIOT_READING)
     {
@@ -1094,6 +1123,18 @@ void setup()
     retry = 0;
     oled_show("smart_screen", "---bszydxh", "连接成功", "加载系统中...");
     Serial.println("wifi! done");
+    if (Udp.begin(1145))
+    { //启动Udp监听服务
+        Serial.println("监听成功");
+
+        //打印本地的ip地址，在UDP工具中会使用到
+        //WiFi.localIP().toString().c_str()用于将获取的本地IP地址转化为字符串
+        Serial.printf("现在收听IP：%s, UDP端口：%d\n", WiFi.localIP().toString().c_str(), 1145);
+    }
+    else
+    {
+        Serial.println("监听失败");
+    }
     Blinker.begin(auth, ssid, password);
     Blinker.attachData(dataRead);
     Button1.attach(button1_callback);

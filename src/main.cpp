@@ -22,8 +22,8 @@
 // #include <BLEUtils.h>            //蓝牙依赖
 // #include <BLEScan.h>             //蓝牙依赖
 // #include <BLEAdvertisedDevice.h> //蓝牙依赖
-#define BLINKER_PRINT Serial //Blinker.h依赖
-#define BLINKER_WIFI         //Blinker.h依赖
+#define BLINKER_PRINT Serial // Blinker.h依赖
+#define BLINKER_WIFI         // Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "HTTPClient.h"
 #include "Blinker.h"
@@ -47,15 +47,15 @@ int retry = 0;      //记录重试次数,全局变量
 int ok = 0;
 const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)
 const char *password = "21009200835";
-//const char *ssid = "bszydxh"; //本地测试环境
-//const char *password = "1357924680";
-const char *auth = "AA7B63392ZQC";
+// const char *ssid = "bszydxh"; //本地测试环境
+// const char *password = "1357924680";
+const char *auth = "21DCA0FCJQLS";
 const char *ntpServer = "cn.ntp.org.cn"; //时间服务器
 const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
 U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
 ////////////////////////////////////////////////////////////////
-//blinker注册
+// blinker注册
 BlinkerButton Button1("btn-abc");
 BlinkerNumber Number1("num-abc");
 BlinkerRGB RGB1("col-6ok");
@@ -111,15 +111,17 @@ int8_t task2_running = 0;
 //     pBLEScan->clearResults(); // delete results fromBLEScan buffer to release memory
 // }
 ////////////////////////////////////////////////////////////////
-//http请求部分,查天气,get
+// http请求部分,查天气,get
 //
 #define ARDUINOJSON_USE_LONG_LONG 1
 #define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
+#define URL2 "https://devapi.qweather.com/v7/air/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
 char text_final[30] = "   ";
 char covid_final[30] = " ";
 char temp_final[10] = " ";
 char humidity_final[10] = " ";
-char hitokoto_final[100] = "松花酿酒，春水煎茶。";
+char aqi_final[10] = "NULL";
+char hitokoto_final[100] = "松花酿酒,春水煎茶。";
 ////////////////////////////////////////////////////////////////
 //久坐提醒部分,默认1h
 //算是手写看门狗...咬自己...
@@ -152,7 +154,7 @@ void reset_sitclock_limit()
     }
     Serial.printf("set_clock_limit:%d:%d\n", target_hour, target_min);
 }
-//void sitclock_task(void *sitclock_task_pointer);
+// void sitclock_task(void *sitclock_task_pointer);
 void off_sitclock() //跟关灯绑定
 {
     if (sitclock_on != 0)
@@ -220,14 +222,14 @@ void esp32_Http_covid()
     //如果服务器不响应OK则将服务器响应状态码通过串口输出
     if (httpCode3 == HTTP_CODE_OK)
     {
-        //String responsePayload = httpClient3.getString();
+        // String responsePayload = httpClient3.getString();
         const String &payload3 = httpClient3.getString();
         Serial.println("Server Response Payload:");
         Serial.println(payload3);
         DynamicJsonDocument jsonBuffer3(4096);
         deserializeJson(jsonBuffer3, payload3);
         JsonObject root3 = jsonBuffer3.as<JsonObject>();
-        //JsonArray now = root["now"];
+        // JsonArray now = root["now"];
         int covid = root3["results"][0]["cities"][0]["currentConfirmedCount"];
 
         if (covid != 0)
@@ -243,6 +245,50 @@ void esp32_Http_covid()
     }
     //关闭与服务器连接
     httpClient3.end();
+}
+void esp32_Http_2()
+{
+    //创建 HTTPClient 对象
+    HTTPClient httpClient;
+
+    //配置请求地址。此处也可以不使用端口号和PATH而单纯的
+    httpClient.begin(URL2);
+    httpClient.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
+    Serial.print("URL: ");
+    Serial.println(URL2);
+    httpClient.addHeader("charset", "utf-8");
+    //启动连接并发送HTTP请求
+    int httpCode = httpClient.GET();
+    Serial.print("Send GET request to URL: ");
+    Serial.println(URL2);
+
+    //如果服务器响应OK则从服务器获取响应体信息并通过串口输出
+    //如果服务器不响应OK则将服务器响应状态码通过串口输出
+    if (httpCode == HTTP_CODE_OK)
+    {
+        // String responsePayload = httpClient.getString();
+        const String &payload = httpClient.getString();
+        Serial.println("Server Response Payload:");
+        Serial.println(payload);
+        DynamicJsonDocument jsonBuffer(2048);
+        deserializeJson(jsonBuffer, payload);
+        JsonObject root = jsonBuffer.as<JsonObject>();
+        // JsonArray now = root["now"];
+        const char *category = root["now"]["category"];
+        const char *aqi = root["now"]["aqi"];
+        if (category != NULL && aqi != NULL)
+        {
+            sprintf(aqi_final, "%s|%s", category, aqi);
+        }
+        Serial.println("url2 get");
+    }
+    else
+    {
+        Serial.println("Server Respose Code:");
+        Serial.println(httpCode);
+    }
+    //关闭与服务器连接
+    httpClient.end();
 }
 void esp32_Http()
 {
@@ -264,14 +310,14 @@ void esp32_Http()
     //如果服务器不响应OK则将服务器响应状态码通过串口输出
     if (httpCode == HTTP_CODE_OK)
     {
-        //String responsePayload = httpClient.getString();
+        // String responsePayload = httpClient.getString();
         const String &payload = httpClient.getString();
         Serial.println("Server Response Payload:");
         Serial.println(payload);
         DynamicJsonDocument jsonBuffer(2048);
         deserializeJson(jsonBuffer, payload);
         JsonObject root = jsonBuffer.as<JsonObject>();
-        //JsonArray now = root["now"];
+        // JsonArray now = root["now"];
         const char *text = root["now"]["text"];
         const char *temp = root["now"]["temp"];
         const char *humidity = root["now"]["humidity"];
@@ -315,7 +361,7 @@ void esp32_Http_hitokoto()
     //如果服务器不响应OK则将服务器响应状态码通过串口输出
     if (httpCode2 == HTTP_CODE_OK)
     {
-        //String responsePayload = httpClient.getString();
+        // String responsePayload = httpClient.getString();
         const String &payload2 = httpClient2.getString();
         Serial.println("Server Response Payload:");
         Serial.println(payload2);
@@ -337,15 +383,15 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
 {
     if (oled_mode == 1)
     {
-        //char str_sum[100];//不需要日志注释掉
-        //char *str = &str_sum[0];//不需要日志注释掉
+        // char str_sum[100];//不需要日志注释掉
+        // char *str = &str_sum[0];//不需要日志注释掉
         u8g2.clearBuffer();
-        //u8g2.setFont(u8g2_font_ncenB12_tr);
+        // u8g2.setFont(u8g2_font_ncenB12_tr);
         u8g2.setFont(u8g2_font_wqy16_t_gb2312);
-        //u8g2.drawStr(0, 12, str1);
-        //u8g2.drawStr(0, 27, str2);
-        //u8g2.drawStr(0, 42, str3);
-        // u8g2.drawStr(0, 57, str4);
+        // u8g2.drawStr(0, 12, str1);
+        // u8g2.drawStr(0, 27, str2);
+        // u8g2.drawStr(0, 42, str3);
+        //  u8g2.drawStr(0, 57, str4);
         u8g2.setCursor(0, 13);
         u8g2.print(str1);
         u8g2.setCursor(0, 30);
@@ -355,8 +401,8 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
         u8g2.setFont(u8g2_font_wqy14_t_gb2312);
         u8g2.setCursor(0, 62);
         u8g2.print(str4);
-        //sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        //Serial.println(str);//不需要日志注释掉
+        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+        // Serial.println(str);//不需要日志注释掉
         Serial.println("oled_change");
         u8g2.sendBuffer();
     }
@@ -368,8 +414,8 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
     }
     else if (oled_mode == 2)
     {
-        //char str_sum[100];//不需要日志注释掉
-        //char *str = &str_sum[0];//不需要日志注释掉
+        // char str_sum[100];//不需要日志注释掉
+        // char *str = &str_sum[0];//不需要日志注释掉
         u8g2.clearBuffer();
         u8g2.setFont(u8g2_font_wqy16_t_gb2312);
         u8g2.setCursor(0, 13);
@@ -381,8 +427,8 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
         u8g2.setFont(u8g2_font_wqy14_t_gb2312);
         u8g2.setCursor(0, 62);
         u8g2.print(str4);
-        //sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        //Serial.println(str);//不需要日志注释掉
+        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+        // Serial.println(str);//不需要日志注释掉
         Serial.println("oled_change");
         u8g2.sendBuffer();
         delay(700);
@@ -390,8 +436,8 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
     }
     else if (oled_mode == 3)
     {
-        //char str_sum[100];//不需要日志注释掉
-        //char *str = &str_sum[0];//不需要日志注释掉
+        // char str_sum[100];//不需要日志注释掉
+        // char *str = &str_sum[0];//不需要日志注释掉
         u8g2.clearBuffer();
         u8g2.setFont(u8g2_font_wqy16_t_gb2312);
         u8g2.setCursor(0, 13);
@@ -403,8 +449,8 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
         u8g2.setFont(u8g2_font_wqy14_t_gb2312);
         u8g2.setCursor(0, 62);
         u8g2.print(str4);
-        //sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        //Serial.println(str);//不需要日志注释掉
+        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+        // Serial.println(str);//不需要日志注释掉
         Serial.println("oled_change");
         u8g2.sendBuffer();
         delay(10000);
@@ -416,7 +462,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
 
     if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
     {
-        //oled_show("error:404", "pls wait", "retrying...", "");
+        // oled_show("error:404", "pls wait", "retrying...", "");
         Serial.println("error:no connect");
         char retry_str[50] = "0";
         sprintf(retry_str, "重连次数: %d", retry);
@@ -465,10 +511,10 @@ void print_time() //常驻显示任务,必须循环,否则出事
     {
         sprintf(str2, "%s USB", strrr);
     }
-    //sprintf(str2, "%s %s", strrr, text_final);
+    // sprintf(str2, "%s %s", strrr, text_final);
     if (timeinfo.tm_sec % 10 >= 5)
     {
-        sprintf(str3, "%s|%s℃ %s", text_final, temp_final, covid_final);
+        sprintf(str3, "%s|%s℃ %s", text_final, temp_final, aqi_final);
     }
     else
     {
@@ -482,7 +528,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
         WiFi.mode(WIFI_OFF);
         ok = 1;
     }*/
-    //Serial.println(&timeinfo, "%F %T %A");//日志
+    // Serial.println(&timeinfo, "%F %T %A");//日志
 }
 int counter = 0; //官方计数
 int rgb_screen_on = 0;
@@ -518,34 +564,34 @@ void dataRead(const String &data)
 uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;
 void rgb_screen()
 {
-    //Serial.println("rgb_show");
-    // Wait for first byte of Magic Word
+    // Serial.println("rgb_show");
+    //  Wait for first byte of Magic Word
     //魔法包结构 Ada+校验码+rgb数据
     for (i = 0; i < sizeof prefix; ++i) //读到Ada开始
     {
     waitLoop:
+        // delay(1); // otherwise, start over
         while (!Serial.available())
-            esp_task_wdt_feed();
+            ;
         ;
         // Check next byte in Magic Word
         if (prefix[i] == Serial.read())
             continue;
-        // otherwise, start over
         i = 0;
         goto waitLoop;
     }
 
     // Hi, Lo, Checksum
     while (!Serial.available())
-        esp_task_wdt_feed();
+        ; // esp_task_wdt_feed();
     ;
     hi = Serial.read();
     while (!Serial.available())
-        esp_task_wdt_feed();
+        ; // esp_task_wdt_feed();
     ;
     lo = Serial.read();
     while (!Serial.available())
-        esp_task_wdt_feed();
+        ; // esp_task_wdt_feed();
     ;
     chk = Serial.read();
     //检查校验码
@@ -560,13 +606,13 @@ void rgb_screen()
     {
         byte r, g, b;
         while (!Serial.available()) //读取阻断
-            esp_task_wdt_feed();
+            ;                       // esp_task_wdt_feed();
         r = Serial.read();
         while (!Serial.available()) //读取阻断
-            esp_task_wdt_feed();
+            ;                       // esp_task_wdt_feed();
         g = Serial.read();
         while (!Serial.available()) //读取阻断
-            esp_task_wdt_feed();
+            ;                       // esp_task_wdt_feed();
         b = Serial.read();
         leds[i].r = r;
         leds[i].g = g;
@@ -587,13 +633,13 @@ void miotPowerState(const String &state)
         light_change = 1;
         mode = 1;
         on_sitclock();
-        //oled_show("", "", "light on");
+        // oled_show("", "", "light on");
         BlinkerMIOT.powerState("on");
         BlinkerMIOT.print();
     }
     else if (state == BLINKER_CMD_OFF)
     {
-        //oled_show("", "", "light off");
+        // oled_show("", "", "light off");
         if (task2_running == 1)
         {
             vTaskDelete(rgb_run);
@@ -641,7 +687,7 @@ void miotColor(int32_t color)
     mode = 3;
     BlinkerMIOT.color(color);
     BlinkerMIOT.print();
-    //oled_show("", "color", "change");
+    // oled_show("", "color", "change");
 }
 void miotBright(const String &bright)
 {
@@ -655,7 +701,7 @@ void miotBright(const String &bright)
     BLINKER_LOG("now set brightness: ", light_brightness);
     BlinkerMIOT.brightness(light_brightness);
     BlinkerMIOT.print();
-    //oled_show("", "brightness", "change");
+    // oled_show("", "brightness", "change");
 }
 void miotMode(uint8_t mode_mi)
 {
@@ -722,7 +768,7 @@ void miotMode(uint8_t mode_mi)
         Udp.print("turn_off");                    //把数据写入发送缓冲区
         Udp.endPacket();                          //发送数据
         Serial.println("UDP数据发送成功");
-        //oled_show("", "", "light off");
+        // oled_show("", "", "light off");
         Serial.println("light off");
         off_sitclock();
         delay(4000);
@@ -776,7 +822,7 @@ void miotQuery(int32_t queryCode)
         BlinkerMIOT.powerState(light_on ? "on" : "off");
         BlinkerMIOT.color(light_now);
         BlinkerMIOT.mode(mi_mode);
-        //BlinkerMIOT.colorTemp(1000);
+        // BlinkerMIOT.colorTemp(1000);
         BlinkerMIOT.brightness(mi_light_bright);
         BlinkerMIOT.print();
         break;
@@ -797,7 +843,7 @@ void miotQuery(int32_t queryCode)
         break;
     case BLINKER_CMD_QUERY_COLORTEMP_NUMBER:
         BLINKER_LOG("MIOT Query ColorTemperature");
-        //BlinkerMIOT.colorTemp(1000);
+        // BlinkerMIOT.colorTemp(1000);
         BlinkerMIOT.print();
         break;
     case BLINKER_CMD_QUERY_BRIGHTNESS_NUMBER:
@@ -809,7 +855,7 @@ void miotQuery(int32_t queryCode)
         BlinkerMIOT.powerState(light_on ? "on" : "off");
         BlinkerMIOT.color(light_now);
         BlinkerMIOT.mode(mi_mode);
-        //BlinkerMIOT.colorTemp(1000);
+        // BlinkerMIOT.colorTemp(1000);
         BlinkerMIOT.brightness(mi_light_bright);
         BlinkerMIOT.print();
         break;
@@ -831,7 +877,7 @@ void xTaskTwo(void *xTask2) //流光溢彩任务
         rgb_screen();
     }
 }
-void xTaskThree(void *xTask3) //blinker任务
+void xTaskThree(void *xTask3) // blinker任务
 {
     while (1)
     {
@@ -848,18 +894,20 @@ void xTaskFour(void *xTask4) //巨型http请求模块任务
         {
             delay(10000);
             esp32_Http();
+            esp32_Http_2();
             esp32_Http_hitokoto();
-            esp32_Http_covid();
+            // esp32_Http_covid();
             start_setup = 0;
         }
         if (timeinfo.tm_min % 3 == 0 && timeinfo.tm_sec == 0)
         {
             esp32_Http();
+            esp32_Http_2();
         }
         if (timeinfo.tm_sec == 45)
         {
             esp32_Http_hitokoto();
-            esp32_Http_covid();
+            // esp32_Http_covid();
         }
     }
 }
@@ -870,7 +918,7 @@ void xTaskFour(void *xTask4) //巨型http请求模块任务
 // }
 void light()
 {
-    if (light_change == 1 && task2_running == 0) //1 全色
+    if (light_change == 1 && task2_running == 0) // 1 全色
     {
         // Move a single white led
         if (rgb_screen_on == 1)
@@ -1073,15 +1121,15 @@ void xTaskSix(void *xTask6) //灯条任务
 
 void setup()
 {
-    Serial.begin(115200);
+    Serial.begin(460800);
     Serial.println("bszydxh esp32 start!");
     WiFi.mode(WIFI_STA);
-    //BLEDevice::init("esp32");
-    // pBLEScan = BLEDevice::getScan(); //create new scan
-    // pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-    // pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
-    // pBLEScan->setInterval(1000);
-    // pBLEScan->setWindow(99); // less or equal setInterval value
+    // BLEDevice::init("esp32");
+    //  pBLEScan = BLEDevice::getScan(); //create new scan
+    //  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    //  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
+    //  pBLEScan->setInterval(1000);
+    //  pBLEScan->setWindow(99); // less or equal setInterval value
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(255);
 
@@ -1128,7 +1176,7 @@ void setup()
         Serial.println("监听成功");
 
         //打印本地的ip地址，在UDP工具中会使用到
-        //WiFi.localIP().toString().c_str()用于将获取的本地IP地址转化为字符串
+        // WiFi.localIP().toString().c_str()用于将获取的本地IP地址转化为字符串
         Serial.printf("现在收听IP：%s, UDP端口：%d\n", WiFi.localIP().toString().c_str(), 1145);
     }
     else
@@ -1153,9 +1201,9 @@ void setup()
 }
 void loop()
 {
-    //Blinker.run(); //wifi blinker自动处理 不用管
-    //light();
-    //Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
-    //Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
+    // Blinker.run(); //wifi blinker自动处理 不用管
+    // light();
+    // Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
+    // Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
     delay(500); //踢看门狗,lopp本质上也是freertos中的一个任务
 }

@@ -1129,6 +1129,7 @@ void light()
                 leds[i].b = 0;
             }
             FastLED.show();
+            delay(100);
             xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, -1, &rgb_run, 1);
             delay(1000);
             Serial.println("led blink");

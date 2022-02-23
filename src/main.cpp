@@ -120,7 +120,8 @@ char text_final[30] = "   ";
 char covid_final[30] = " ";
 char temp_final[10] = " ";
 char humidity_final[10] = " ";
-char aqi_final[10] = "NULL";
+char aqi_final[10] = " ";
+char category_final[30] = " ";
 char hitokoto_final[100] = "松花酿酒,春水煎茶。";
 ////////////////////////////////////////////////////////////////
 //久坐提醒部分,默认1h
@@ -139,6 +140,7 @@ void reset_sitclock() //重置看门钟
     else
     {
         target_hour = timeinfo.tm_hour + 1;
+        // target_hour = timeinfo.tm_hour;
     }
     target_min = timeinfo.tm_min;
     Serial.printf("set_clock:%d:%d\n", target_hour, target_min);
@@ -182,7 +184,7 @@ void sitclock_task(void *sitclock_task_pointer)
     while (1)
     {
         Serial.printf("sit clock try ");
-        if (is_sitclock() == 1)
+        if (is_sitclock() == 1 && task2_running == 0)
         {
             printf("sit clock warning!!!");
             //久坐之后的操作
@@ -190,6 +192,16 @@ void sitclock_task(void *sitclock_task_pointer)
             light_change = 1;
             oled_mode = 3;
             blink_time = 5;
+            reset_sitclock_limit();
+        }
+        else if (is_sitclock() == 1 && task2_running == 1)
+        {
+            printf("sit clock warning!!!");
+            //久坐之后的操作
+            mode = 5;
+            light_change = 1;
+            oled_mode = 3;
+            blink_time = 3;
             reset_sitclock_limit();
         }
         delay(5000);
@@ -278,7 +290,8 @@ void esp32_Http_2()
         const char *aqi = root["now"]["aqi"];
         if (category != NULL && aqi != NULL)
         {
-            sprintf(aqi_final, "%s|%s", category, aqi);
+            sprintf(aqi_final, "%s", aqi);
+            sprintf(category_final, "%s", category);
         }
         Serial.println("url2 get");
     }
@@ -518,7 +531,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
     }
     else
     {
-        sprintf(str3, "%s|%s%% 西安", text_final, humidity_final);
+        sprintf(str3, "%s|%s%% %s", text_final, humidity_final, category_final);
     }
 
     oled_show(str1, str2, str3, hitokoto_final);
@@ -926,13 +939,8 @@ void light()
             rgb_screen_on = 0;
             task2_running = 1;
             Serial.println("light");
-            off_sitclock();
-#if !USE_MULTCORE
-            xTaskCreate(xTaskTwo, "TaskTwo", 4096, NULL, 2, NULL);
-#else
+            //off_sitclock();
             xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, -1, &rgb_run, 1);
-#endif
-
             return;
         }
         if (mode == 1 || mode == 3) //换亮度/色彩
@@ -1109,11 +1117,35 @@ void light()
             }
         }
     }
+    else if (light_change == 1 && task2_running == 1 && mode == 5) // usb模式久坐闪灯
+    {
+        if (blink_time > 0)
+        {
+            vTaskDelete(rgb_run);
+            for (int i = 0; i < 120; i++)
+            {
+                leds[i].r = 255;
+                leds[i].g = 0;
+                leds[i].b = 0;
+            }
+            FastLED.show();
+            xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, -1, &rgb_run, 1);
+            delay(1000);
+            Serial.println("led blink");
+            blink_time--;
+        }
+        else
+        {
+            light_change = 0;
+            Serial.println("blink failed");
+        }
+    }
 }
 void xTaskSix(void *xTask6) //灯条任务
 {
     while (1)
     {
+
         light();
         delay(100);
     }
@@ -1205,5 +1237,5 @@ void loop()
     // light();
     // Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
     // Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
-    delay(500); //踢看门狗,lopp本质上也是freertos中的一个任务
+    delay(500); //踢看门狗,loop本质上也是freertos中的一个任务
 }

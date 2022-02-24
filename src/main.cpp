@@ -1121,8 +1121,8 @@ void light()
     {
         if (blink_time > 0)
         {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
+            vTaskSuspend(rgb_run);
+            memset(leds, 0, NUM_LEDS * sizeof(struct CRGB)); //将leds空间置零
             for (int i = 0; i < 120; i++)
             {
                 leds[i].r = 255;
@@ -1131,8 +1131,7 @@ void light()
             }
             FastLED.show();
             delay(1000);
-            xTaskCreatePinnedToCore(xTaskTwo, "Taskrgb", 4096, NULL, -1, &rgb_run, 1);
-            task2_running = 1;
+            vTaskResume(rgb_run);
             delay(1000);
             Serial.println("led blink");
             blink_time--;
@@ -1229,6 +1228,7 @@ void setup()
     BlinkerMIOT.attachQuery(miotQuery);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
+
     xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 2048, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(xTaskThree, "TaskThree", 7168, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(xTaskFour, "TaskFour", 5120, NULL, 0, NULL, 0);

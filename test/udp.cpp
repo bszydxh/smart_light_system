@@ -19,8 +19,8 @@
 #include "WiFiClientSecure.h" //Blinker.h依赖
 #include "EEPROM.h"           //Blinker.h依赖
 #include "BLEScan.h"
-#define BLINKER_PRINT Serial //Blinker.h依赖
-#define BLINKER_WIFI         //Blinker.h依赖
+#define BLINKER_PRINT Serial // Blinker.h依赖
+#define BLINKER_WIFI         // Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "HTTPClient.h"
 #include "Blinker.h"
@@ -32,11 +32,11 @@
 #define ssid "324-右"          //这里改成你的设备当前环境下WIFI名字
 #define password "21009200835" //这里改成你的设备当前环境下WIFI密码
 
-WiFiUDP Udp;                                  //实例化WiFiUDP对象
-unsigned int localUdpPort = 1234;             // 自定义本地监听端口
-unsigned int remoteUdpPort = 4321;            // 自定义远程监听端口
-char incomingPacket[255];                     // 保存Udp工具发过来的消息
-char replyPacket[] = "turn_off"; //发送的消息,仅支持英文
+WiFiUDP Udp;                       //实例化WiFiUDP对象
+unsigned int localUdpPort = 1234;  // 自定义本地监听端口
+unsigned int remoteUdpPort = 4321; // 自定义远程监听端口
+char incomingPacket[255];          // 保存Udp工具发过来的消息
+char replyPacket[] = "turn_off";   //发送的消息,仅支持英文
 
 void setup()
 {
@@ -57,7 +57,7 @@ void setup()
     Serial.println("监听成功");
 
     //打印本地的ip地址，在UDP工具中会使用到
-    //WiFi.localIP().toString().c_str()用于将获取的本地IP地址转化为字符串
+    // WiFi.localIP().toString().c_str()用于将获取的本地IP地址转化为字符串
     Serial.printf("现在收听IP：%s, UDP端口：%d\n", WiFi.localIP().toString().c_str(), localUdpPort);
   }
   else
@@ -77,7 +77,7 @@ void loop()
   if (packetSize)                     //解析包不为空
   {
     //收到Udp数据包
-    //Udp.remoteIP().toString().c_str()用于将获取的远端IP地址转化为字符串
+    // Udp.remoteIP().toString().c_str()用于将获取的远端IP地址转化为字符串
     Serial.printf("收到来自远程IP：%s（远程端口：%d）的数据包字节数：%d\n", Udp.remoteIP().toString().c_str(), Udp.remotePort(), packetSize);
 
     // 读取Udp数据包并存放在incomingPacket

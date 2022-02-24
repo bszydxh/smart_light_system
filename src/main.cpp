@@ -939,8 +939,8 @@ void light()
             rgb_screen_on = 0;
             task2_running = 1;
             Serial.println("light");
-            //off_sitclock();
-            xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, -1, &rgb_run, 1);
+            // off_sitclock();
+            xTaskCreatePinnedToCore(xTaskTwo, "Taskrgb", 4096, NULL, -1, &rgb_run, 1);
             return;
         }
         if (mode == 1 || mode == 3) //换亮度/色彩
@@ -1122,6 +1122,7 @@ void light()
         if (blink_time > 0)
         {
             vTaskDelete(rgb_run);
+            task2_running = 0;
             for (int i = 0; i < 120; i++)
             {
                 leds[i].r = 255;
@@ -1129,8 +1130,9 @@ void light()
                 leds[i].b = 0;
             }
             FastLED.show();
-            delay(100);
-            xTaskCreatePinnedToCore(xTaskTwo, "TaskOne", 4096, NULL, -1, &rgb_run, 1);
+            delay(1000);
+            xTaskCreatePinnedToCore(xTaskTwo, "Taskrgb", 4096, NULL, -1, &rgb_run, 1);
+            task2_running = 1;
             delay(1000);
             Serial.println("led blink");
             blink_time--;

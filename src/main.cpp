@@ -643,9 +643,10 @@ void miotPowerState(const String &state)
         light_on = 1;
         oled_mode = 2;
         Serial.println("light on");
-        light_change = 1;
-        mode = 1;
+        mode = 1; //默认日光
         on_sitclock();
+        delay(150);
+        light_change = 1;
         // oled_show("", "", "light on");
         BlinkerMIOT.powerState("on");
         BlinkerMIOT.print();
@@ -660,8 +661,8 @@ void miotPowerState(const String &state)
         }
         Serial.println("light off");
         off_sitclock();
-        light_change = 1;
         mode = 0;
+        light_change = 1;
         oled_mode = 0;
         light_on = 0;
 
@@ -671,6 +672,11 @@ void miotPowerState(const String &state)
 }
 void miotColor(int32_t color)
 {
+    if (task2_running == 1)
+    {
+        vTaskDelete(rgb_run);
+        task2_running = 0;
+    }
     BLINKER_LOG("need set color: ", color);
     light_on = 1; //强制开启
     light_now = color;
@@ -817,9 +823,10 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_COMPUTER)
     {
-        Serial.print("Ada\n");
         rgb_screen_on = 1;
         light_change = 1;
+        Serial.print("Ada\n");
+        on_sitclock();
     }
     BlinkerMIOT.mode(mode_mi);
     BlinkerMIOT.print();
@@ -933,6 +940,16 @@ void light()
 {
     if (light_change == 1 && task2_running == 0) // 1 全色
     {
+        int r_all = 0, g_all = 0, b_all = 0;
+        for (int i = 0; i < 120; i++)
+        {
+            r_all = leds[i].r + r_all;
+            g_all = leds[i].g + g_all;
+            b_all = leds[i].b + b_all;
+        }
+        light_now_color_r = r_all / 120;
+        light_now_color_g = g_all / 120;
+        light_now_color_b = b_all / 120;
         // Move a single white led
         if (rgb_screen_on == 1)
         {
@@ -941,9 +958,11 @@ void light()
             Serial.println("light");
             // off_sitclock();
             xTaskCreatePinnedToCore(xTaskTwo, "Taskrgb", 4096, NULL, -1, &rgb_run, 1);
+            mode = 2;
+            light_change = 0;
             return;
         }
-        if (mode == 1 || mode == 3) //换亮度/色彩
+        if (mode == 1 || mode == 3) //换亮度/色彩/////mode2悬空给rgb
         {
             for (int8_t n = 1; n <= 24; n++)
             {
@@ -1113,6 +1132,7 @@ void light()
             else
             {
                 light_change = 0;
+                mode = 1;
                 Serial.println("blink failed");
             }
         }

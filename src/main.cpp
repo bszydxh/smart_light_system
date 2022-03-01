@@ -191,7 +191,7 @@ void sitclock_task(void *sitclock_task_pointer)
             mode = 4;
             light_change = 1;
             oled_mode = 3;
-            blink_time = 5;
+            blink_time = 3;
             reset_sitclock_limit();
         }
         else if (is_sitclock() == 1 && task2_running == 1)

@@ -35,6 +35,8 @@
 #define NUM_LEDS 120
 #define DATA_PIN 25
 #define USE_MULTCORE 1
+//临界互斥锁,保护leds资源
+static portMUX_TYPE leds_mutex = portMUX_INITIALIZER_UNLOCKED;
 CRGB leds[NUM_LEDS];
 TaskHandle_t rgb_run;
 TaskHandle_t sitclock_run;
@@ -614,7 +616,7 @@ void rgb_screen()
         goto waitLoop;
     }                                                //线程阻断
     memset(leds, 0, NUM_LEDS * sizeof(struct CRGB)); //将leds空间置零
-    // Read the transmission data and set LED values
+                                                  // Read the transmission data and set LED values
     for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
         byte r, g, b;
@@ -881,7 +883,7 @@ void miotQuery(int32_t queryCode)
         break;
     }
 }
-void xTaskOne(void *xTask1) //显示屏任务
+void oledTask(void *xTaskOled) //显示屏任务
 {
     while (1)
     {
@@ -889,15 +891,14 @@ void xTaskOne(void *xTask1) //显示屏任务
         delay(300);
     }
 }
-
-void xTaskTwo(void *xTask2) //流光溢彩任务
+void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
 {
     while (1)
     {
         rgb_screen();
     }
 }
-void xTaskThree(void *xTask3) // blinker任务
+void blinkerTask(void *xTaskBlinker) // blinker任务
 {
     while (1)
     {
@@ -905,7 +906,7 @@ void xTaskThree(void *xTask3) // blinker任务
         delay(10);
     }
 }
-void xTaskFour(void *xTask4) //巨型http请求模块任务
+void httpTask(void *xTaskHttp) //巨型http请求模块任务
 {
     while (1)
     {
@@ -938,15 +939,18 @@ void xTaskFour(void *xTask4) //巨型http请求模块任务
 // }
 void light()
 {
+
     if (light_change == 1 && task2_running == 0) // 1 全色
     {
         int r_all = 0, g_all = 0, b_all = 0;
+        portENTER_CRITICAL(&leds_mutex);
         for (int i = 0; i < 120; i++)
         {
             r_all = leds[i].r + r_all;
             g_all = leds[i].g + g_all;
             b_all = leds[i].b + b_all;
         }
+        portEXIT_CRITICAL(&leds_mutex);
         light_now_color_r = r_all / 120;
         light_now_color_g = g_all / 120;
         light_now_color_b = b_all / 120;
@@ -957,7 +961,7 @@ void light()
             task2_running = 1;
             Serial.println("light");
             // off_sitclock();
-            xTaskCreatePinnedToCore(xTaskTwo, "Taskrgb", 4096, NULL, -1, &rgb_run, 1);
+            xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, -1, &rgb_run, 1);
             mode = 2;
             light_change = 0;
             return;
@@ -970,6 +974,7 @@ void light()
                 light_change_color_g = light_now_color_g + (light_color_g - light_now_color_g) * n / 24;
                 light_change_color_b = light_now_color_b + (light_color_b - light_now_color_b) * n / 24;
                 light_change_brightness = light_now_brightness + (light_brightness - light_now_brightness) * n / 24;
+                portENTER_CRITICAL(&leds_mutex);
                 for (int8_t i = 0; i < n; i++)
                 {
 
@@ -989,6 +994,7 @@ void light()
                     leds[96 + i].g = light_change_color_g;
                     leds[96 + i].b = light_change_color_b;
                 }
+                portEXIT_CRITICAL(&leds_mutex);
                 FastLED.setBrightness(light_change_brightness);
                 light_change = 0;
                 Serial.print("r:");
@@ -1010,12 +1016,12 @@ void light()
         }
         else if (mode == 0) //关led
         {
-
             for (int8_t n = 1; n <= 24; n++)
             {
                 light_change_color_r = light_now_color_r + (0 - light_now_color_r) * n / 24;
                 light_change_color_g = light_now_color_g + (0 - light_now_color_g) * n / 24;
                 light_change_color_b = light_now_color_b + (0 - light_now_color_b) * n / 24;
+                portENTER_CRITICAL(&leds_mutex);
                 for (int8_t i = 0; i < n; i++)
                 {
                     leds[23 - i].r = light_change_color_r;
@@ -1034,6 +1040,7 @@ void light()
                     leds[96 + i].g = light_change_color_g;
                     leds[96 + i].b = light_change_color_b;
                 }
+                portEXIT_CRITICAL(&leds_mutex);
                 light_change = 0;
                 Serial.print("r:");
                 Serial.print(light_change_color_r);
@@ -1060,6 +1067,7 @@ void light()
                     light_change_color_r = light_now_color_r + (255 - light_now_color_r) * n / 24;
                     light_change_color_g = light_now_color_g + (0 - light_now_color_g) * n / 24;
                     light_change_color_b = light_now_color_b + (0 - light_now_color_b) * n / 24;
+                    portENTER_CRITICAL(&leds_mutex);
                     for (int8_t i = 0; i < n; i++)
                     {
                         leds[23 - i].r = light_change_color_r;
@@ -1078,6 +1086,7 @@ void light()
                         leds[96 + i].g = light_change_color_g;
                         leds[96 + i].b = light_change_color_b;
                     }
+                    portEXIT_CRITICAL(&leds_mutex);
                     Serial.print("r:");
                     Serial.print(light_change_color_r);
                     Serial.print("  g:");
@@ -1096,6 +1105,7 @@ void light()
                     light_change_color_r = 255 + (light_change_color_r - 255) * n / 24;
                     light_change_color_g = 0 + (light_now_color_g)*n / 24;
                     light_change_color_b = 0 + (light_now_color_b)*n / 24;
+                    portENTER_CRITICAL(&leds_mutex);
                     for (int8_t i = 0; i < n; i++)
                     {
                         leds[23 - i].r = light_change_color_r;
@@ -1114,6 +1124,7 @@ void light()
                         leds[96 + i].g = light_change_color_g;
                         leds[96 + i].b = light_change_color_b;
                     }
+                    portEXIT_CRITICAL(&leds_mutex);
                     Serial.print("r:");
                     Serial.print(light_change_color_r);
                     Serial.print("  g:");
@@ -1142,13 +1153,14 @@ void light()
         if (blink_time > 0)
         {
             vTaskSuspend(rgb_run);
-            memset(leds, 0, NUM_LEDS * sizeof(struct CRGB)); //将leds空间置零
+            portENTER_CRITICAL(&leds_mutex);
             for (int i = 0; i < 120; i++)
             {
                 leds[i].r = 255;
                 leds[i].g = 0;
                 leds[i].b = 0;
             }
+            portEXIT_CRITICAL(&leds_mutex);
             FastLED.show();
             delay(1000);
             vTaskResume(rgb_run);
@@ -1163,11 +1175,10 @@ void light()
         }
     }
 }
-void xTaskSix(void *xTask6) //灯条任务
+void rgbChangeTask(void *xTaskRgbChange) //灯条任务
 {
     while (1)
     {
-
         light();
         delay(100);
     }
@@ -1249,10 +1260,10 @@ void setup()
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
 
-    xTaskCreatePinnedToCore(xTaskOne, "TaskOne", 2048, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(xTaskThree, "TaskThree", 7168, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(xTaskFour, "TaskFour", 5120, NULL, 0, NULL, 0);
-    xTaskCreatePinnedToCore(xTaskSix, "TaskSix", 1024, NULL, -1, NULL, 1);
+    xTaskCreatePinnedToCore(oledTask, "oledTask", 2048, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(httpTask, "httpTask", 5120, NULL, 0, NULL, 0);
+    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, -1, NULL, 1);
 }
 void loop()
 {

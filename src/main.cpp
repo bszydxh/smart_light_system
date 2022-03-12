@@ -38,6 +38,7 @@
 //临界互斥锁,保护leds资源
 static portMUX_TYPE leds_mutex = portMUX_INITIALIZER_UNLOCKED;
 CRGB leds[NUM_LEDS];
+CRGB leds_rgb_mode[NUM_LEDS];
 TaskHandle_t rgb_run;
 TaskHandle_t sitclock_run;
 ////////////////////////////////////////////////////////////////
@@ -51,6 +52,7 @@ const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)
 const char *password = "21009200835";
 // const char *ssid = "bszydxh"; //本地测试环境
 // const char *password = "1357924680";
+// const char *auth = "49e446bfb750";
 const char *auth = "21DCA0FCJQLS";
 const char *ntpServer = "cn.ntp.org.cn"; //时间服务器
 const long gmtOffset_sec = 8 * 3600;
@@ -58,9 +60,12 @@ const int daylightOffset_sec = 0;
 U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
 ////////////////////////////////////////////////////////////////
 // blinker注册
-BlinkerButton Button1("btn-abc");
-BlinkerNumber Number1("num-abc");
-BlinkerRGB RGB1("col-6ok");
+char b_name[32] = "btn-abc";
+char n_name[32] = "num-abc";
+char r_name[32] = "col-6ok";
+BlinkerButton Button1(b_name);
+BlinkerNumber Number1(n_name);
+BlinkerRGB RGB1(r_name);
 ////////////////////////////////////////////////////////////////
 //灯光状态部分,字面意思
 int8_t oled_mode = 1;      //显示屏模式 1 正常 0 关闭 2 欢迎 3 久坐
@@ -115,7 +120,7 @@ int8_t task2_running = 0;
 ////////////////////////////////////////////////////////////////
 // http请求部分,查天气,get
 //
-#define ARDUINOJSON_USE_LONG_LONG 1
+//#define ARDUINOJSON_USE_LONG_LONG 1
 #define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
 #define URL2 "https://devapi.qweather.com/v7/air/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
 char text_final[30] = "   ";
@@ -598,15 +603,14 @@ void rgb_screen()
 
     // Hi, Lo, Checksum
     while (!Serial.available())
-        ; // esp_task_wdt_feed();
-    ;
+        ;
     hi = Serial.read();
     while (!Serial.available())
-        ; // esp_task_wdt_feed();
+        ;
     ;
     lo = Serial.read();
     while (!Serial.available())
-        ; // esp_task_wdt_feed();
+        ;
     ;
     chk = Serial.read();
     //检查校验码
@@ -616,23 +620,30 @@ void rgb_screen()
         goto waitLoop;
     }                                                //线程阻断
     memset(leds, 0, NUM_LEDS * sizeof(struct CRGB)); //将leds空间置零
-                                                  // Read the transmission data and set LED values
     for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
         byte r, g, b;
-        while (!Serial.available()) //读取阻断
-            ;                       // esp_task_wdt_feed();
+        while (!Serial.available())
+            ;
         r = Serial.read();
-        while (!Serial.available()) //读取阻断
-            ;                       // esp_task_wdt_feed();
+        while (!Serial.available())
+            ;
         g = Serial.read();
-        while (!Serial.available()) //读取阻断
-            ;                       // esp_task_wdt_feed();
+        while (!Serial.available())
+            ;
         b = Serial.read();
-        leds[i].r = r;
-        leds[i].g = g;
-        leds[i].b = b;
+        leds_rgb_mode[i].r = r;
+        leds_rgb_mode[i].g = g;
+        leds_rgb_mode[i].b = b;
     }
+    portENTER_CRITICAL(&leds_mutex);
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
+    {
+        leds[i].r = leds_rgb_mode[i].r;
+        leds[i].g = leds_rgb_mode[i].g;
+        leds[i].b = leds_rgb_mode[i].b;
+    }
+    portEXIT_CRITICAL(&leds_mutex);
     // Shows new values
     FastLED.show();
 }
@@ -661,12 +672,13 @@ void miotPowerState(const String &state)
             vTaskDelete(rgb_run);
             task2_running = 0;
         }
-        Serial.println("light off");
-        off_sitclock();
         mode = 0;
+        Serial.println("light off");
+        delay(150);
         light_change = 1;
         oled_mode = 0;
         light_on = 0;
+        off_sitclock();
 
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
@@ -932,6 +944,41 @@ void httpTask(void *xTaskHttp) //巨型http请求模块任务
         }
     }
 }
+void udpTask(void *xTaskUdp)
+{
+    while (1)
+    {
+        int packetSize = Udp.parsePacket(); //获得解析包
+        if (packetSize)                     //解析包不为空
+        {
+            //收到Udp数据包
+            // Udp.remoteIP().toString().c_str()用于将获取的远端IP地址转化为字符串
+            Serial.printf("收到来自远程IP：%s（远程端口：%d）的数据包字节数：%d\n", Udp.remoteIP().toString().c_str(), Udp.remotePort(), packetSize);
+            char incomingPacket[255];
+            // 读取Udp数据包并存放在incomingPacket
+            int len = Udp.read(incomingPacket, 255); //返回数据包字节数
+            if (len > 0)
+            {
+                incomingPacket[len] = 0; //清空缓存
+                if (strcmp(incomingPacket, "turn_on") == 0)
+                {
+                    miotPowerState("on");
+                }
+                else if (strcmp(incomingPacket, "turn_off") == 0)
+                {
+                    miotPowerState("off");
+                }
+                else if (strcmp(incomingPacket, "computer") == 0)
+                {
+                    Serial.println("computer mode");
+                    miotMode((uint8_t)6);
+                }
+                Serial.printf("UDP数据包内容为: %s\n", incomingPacket); //向串口打印信息
+            }
+        }
+        delay(3000); //延时3秒
+    }
+}
 // void xTaskFive(void *xTask5) //蓝牙任务
 // {
 //         BLEDevice::init("esp32");
@@ -1102,9 +1149,9 @@ void light()
                 delay(1000);
                 for (int8_t n = 1; n <= 24; n++)
                 {
-                    light_change_color_r = 255 + (light_change_color_r - 255) * n / 24;
-                    light_change_color_g = 0 + (light_now_color_g)*n / 24;
-                    light_change_color_b = 0 + (light_now_color_b)*n / 24;
+                    light_change_color_r = 255 + (light_now_color_r - 255) * n / 24;
+                    light_change_color_g = 0 + (light_now_color_g - 0) * n / 24;
+                    light_change_color_b = 0 + (light_now_color_b - 0) * n / 24;
                     portENTER_CRITICAL(&leds_mutex);
                     for (int8_t i = 0; i < n; i++)
                     {
@@ -1239,7 +1286,6 @@ void setup()
     if (Udp.begin(1145))
     { //启动Udp监听服务
         Serial.println("监听成功");
-
         //打印本地的ip地址，在UDP工具中会使用到
         // WiFi.localIP().toString().c_str()用于将获取的本地IP地址转化为字符串
         Serial.printf("现在收听IP：%s, UDP端口：%d\n", WiFi.localIP().toString().c_str(), 1145);
@@ -1263,6 +1309,7 @@ void setup()
     xTaskCreatePinnedToCore(oledTask, "oledTask", 2048, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 5120, NULL, 0, NULL, 0);
+    xTaskCreatePinnedToCore(udpTask, "udpTask", 5120, NULL, 0, NULL, 0);
     xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, -1, NULL, 1);
 }
 void loop()

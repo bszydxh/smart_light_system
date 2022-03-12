@@ -51,7 +51,7 @@ vscode platfromio平台开发
 ## 支持功能
 1. 小爱同学操控(无外部按键,blinker接入)
 2. 流光溢彩/音效律动效果(电脑端下载Prismatik软件,选择adalight)
-3. 显示屏(一言/西安疫情实时人数/天气/时钟)
+3. 显示屏(一言/天气/时钟)
 4. 久坐提醒(阴间红色)
 5. 关电脑,c#程序来源<https://github.com/tty228/udp_turn_off>()
 ## 注意事项 

@@ -121,6 +121,7 @@ int8_t task2_running = 0;
 // http请求部分,查天气,get
 //
 //#define ARDUINOJSON_USE_LONG_LONG 1
+//下面是和风天气的api,api的key手动再申请罢,一天3000次
 #define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
 #define URL2 "https://devapi.qweather.com/v7/air/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
 char text_final[30] = "   ";

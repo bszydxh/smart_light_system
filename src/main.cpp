@@ -30,6 +30,7 @@
 #include "FastLED.h"
 #include "WiFiUdp.h"
 #include "esp_task_wdt.h"
+#include "password.cpp"
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义
 #define NUM_LEDS 120
@@ -48,12 +49,9 @@ int8_t start_setup = 1;
 struct tm timeinfo; //时间信息
 int retry = 0;      //记录重试次数,全局变量
 int ok = 0;
-const char *ssid = u8"324-右"; //定义一个字符串(指针定义法)
-const char *password = "21009200835";
-// const char *ssid = "bszydxh"; //本地测试环境
-// const char *password = "1357924680";
-// const char *auth = "49e446bfb750";
-const char *auth = "21DCA0FCJQLS";
+const char *ssid = SSID; //定义一个字符串(指针定义法)
+const char *password = PASSWORD;
+const char *auth = AUTH_KEY;
 const char *ntpServer = "cn.ntp.org.cn"; //时间服务器
 const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
@@ -88,7 +86,6 @@ int light_color_r = 255;
 int light_color_g = 150;
 int light_color_b = 50;
 int8_t task2_running = 0;
-
 ////////////////////////////////////////////////////////////////
 // 蓝牙部分//堆溢出,算了
 // int scanTime = 5; //In seconds
@@ -121,9 +118,6 @@ int8_t task2_running = 0;
 // http请求部分,查天气,get
 //
 //#define ARDUINOJSON_USE_LONG_LONG 1
-//下面是和风天气的api,api的key手动再申请罢,一天3000次
-#define URL "https://devapi.qweather.com/v7/weather/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
-#define URL2 "https://devapi.qweather.com/v7/air/now?location=108.8325,34.1283&key=f890fb47ffff430b93bf22b085d03d07&gzip=n"
 char text_final[30] = "   ";
 char covid_final[30] = " ";
 char temp_final[10] = " ";

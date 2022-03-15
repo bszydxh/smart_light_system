@@ -4,6 +4,12 @@
 14 -> 显示屏数据信号(sda)
 25 -> 灯带pwm信号
 */
+/*
+EEPROM 3000-5120自定义
+3000 r
+3004 g
+3008 b
+*/
 /*系统由freertos接管*/
 #include <Arduino.h> //主依赖,具体依赖见依赖树
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
@@ -29,7 +35,7 @@
 #include "Blinker.h"
 #include "FastLED.h"
 #include "WiFiUdp.h"
-#include "esp_task_wdt.h"//下面是和风天气的api,api的key手动再申请罢,一天3000次
+#include "esp_task_wdt.h" //下面是和风天气的api,api的key手动再申请罢,一天3000次
 #define URL "https://devapi.qweather.com/v7/weather/now?location=xxx&key=xxx&gzip=n"
 #define URL2 "https://devapi.qweather.com/v7/air/now?location=xxx&key=xxx&gzip=n"
 #define SSID ""
@@ -52,6 +58,7 @@ TaskHandle_t sitclock_run;
 //全局初始化
 WiFiUDP Udp;
 int8_t start_setup = 1;
+int eeprom_now_address = 3000;
 struct tm timeinfo; //时间信息
 int retry = 0;      //记录重试次数,全局变量
 int ok = 0;
@@ -72,7 +79,8 @@ BlinkerNumber Number1(n_name);
 BlinkerRGB RGB1(r_name);
 ////////////////////////////////////////////////////////////////
 //灯光状态部分,字面意思
-int8_t oled_mode = 1;      //显示屏模式 1 正常 0 关闭 2 欢迎 3 久坐
+int8_t oled_state = 1;     //显示屏开关
+int8_t oled_mode = 1;      //显示屏模式 1 正常2 欢迎 3 久坐
 int8_t light_on = 0;       //灯带开关,用于状态回调,修改该值不能控制
 int8_t mode = 0;           //!!!!灯光改变模式,并非小爱指定的模式!!!!
 int8_t mi_mode = 0;        //小爱指定的模式,用于回调,与逻辑耦合的不是那么深,默认日光
@@ -91,7 +99,7 @@ int light_change_color_b = 0xff;
 int light_color_r = 135;
 int light_color_g = 206;
 int light_color_b = 235;
-int8_t task2_running = 0;
+int8_t rgb_running = 0;
 ////////////////////////////////////////////////////////////////
 // 蓝牙部分//堆溢出,算了
 // int scanTime = 5; //In seconds
@@ -192,7 +200,7 @@ void sitclock_task(void *sitclock_task_pointer)
     while (1)
     {
         Serial.printf("sit clock try ");
-        if (is_sitclock() == 1 && task2_running == 0)
+        if (is_sitclock() == 1 && rgb_running == 0)
         {
             printf("sit clock warning!!!");
             //久坐之后的操作
@@ -202,7 +210,7 @@ void sitclock_task(void *sitclock_task_pointer)
             blink_time = 3;
             reset_sitclock_limit();
         }
-        else if (is_sitclock() == 1 && task2_running == 1)
+        else if (is_sitclock() == 1 && rgb_running == 1)
         {
             printf("sit clock warning!!!");
             //久坐之后的操作
@@ -402,85 +410,87 @@ void esp32_Http_hitokoto()
 //显示屏开关
 void oled_show(const char *str1, const char *str2, const char *str3, const char *str4) //提供三行英文输出
 {
-    if (oled_mode == 1)
+    if (oled_state == 1)
     {
-        // char str_sum[100];//不需要日志注释掉
-        // char *str = &str_sum[0];//不需要日志注释掉
-        u8g2.clearBuffer();
-        // u8g2.setFont(u8g2_font_ncenB12_tr);
-        u8g2.setFont(u8g2_font_wqy16_t_gb2312);
-        // u8g2.drawStr(0, 12, str1);
-        // u8g2.drawStr(0, 27, str2);
-        // u8g2.drawStr(0, 42, str3);
-        //  u8g2.drawStr(0, 57, str4);
-        u8g2.setCursor(0, 13);
-        u8g2.print(str1);
-        u8g2.setCursor(0, 30);
-        u8g2.print(str2);
-        u8g2.setCursor(0, 47);
-        u8g2.print(str3);
-        u8g2.setFont(u8g2_font_wqy14_t_gb2312);
-        u8g2.setCursor(0, 62);
-        u8g2.print(str4);
-        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        // Serial.println(str);//不需要日志注释掉
-        Serial.println("oled_change");
-        u8g2.sendBuffer();
+        if (oled_mode == 1)
+        {
+            // char str_sum[100];//不需要日志注释掉
+            // char *str = &str_sum[0];//不需要日志注释掉
+            u8g2.clearBuffer();
+            // u8g2.setFont(u8g2_font_ncenB12_tr);
+            u8g2.setFont(u8g2_font_wqy16_t_gb2312);
+            // u8g2.drawStr(0, 12, str1);
+            // u8g2.drawStr(0, 27, str2);
+            // u8g2.drawStr(0, 42, str3);
+            //  u8g2.drawStr(0, 57, str4);
+            u8g2.setCursor(0, 13);
+            u8g2.print(str1);
+            u8g2.setCursor(0, 30);
+            u8g2.print(str2);
+            u8g2.setCursor(0, 47);
+            u8g2.print(str3);
+            u8g2.setFont(u8g2_font_wqy14_t_gb2312);
+            u8g2.setCursor(0, 62);
+            u8g2.print(str4);
+            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+            // Serial.println(str);//不需要日志注释掉
+            Serial.println("oled_change");
+            u8g2.sendBuffer();
+        }
+        else if (oled_mode == 2)
+        {
+            // char str_sum[100];//不需要日志注释掉
+            // char *str = &str_sum[0];//不需要日志注释掉
+            u8g2.clearBuffer();
+            u8g2.setFont(u8g2_font_wqy16_t_gb2312);
+            u8g2.setCursor(0, 13);
+            u8g2.print("欢迎回来 bszydxh");
+            u8g2.setCursor(0, 30);
+            u8g2.print("灯带就绪...");
+            u8g2.setCursor(0, 47);
+            u8g2.print("显示屏就绪...");
+            u8g2.setFont(u8g2_font_wqy14_t_gb2312);
+            u8g2.setCursor(0, 62);
+            u8g2.print(str4);
+            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+            // Serial.println(str);//不需要日志注释掉
+            Serial.println("oled_change");
+            u8g2.sendBuffer();
+            delay(700);
+            oled_mode = 1; //欢迎完正常
+        }
+        else if (oled_mode == 3)
+        {
+            // char str_sum[100];//不需要日志注释掉
+            // char *str = &str_sum[0];//不需要日志注释掉
+            u8g2.clearBuffer();
+            u8g2.setFont(u8g2_font_wqy16_t_gb2312);
+            u8g2.setCursor(0, 13);
+            u8g2.print("!!!久坐提醒!!!");
+            u8g2.setCursor(0, 30);
+            u8g2.print("!!!起来动动!!!");
+            u8g2.setCursor(0, 47);
+            u8g2.print("!!!看看远方!!!");
+            u8g2.setFont(u8g2_font_wqy14_t_gb2312);
+            u8g2.setCursor(0, 62);
+            u8g2.print(str4);
+            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+            // Serial.println(str);//不需要日志注释掉
+            Serial.println("oled_change");
+            u8g2.sendBuffer();
+            delay(10000);
+            oled_mode = 1; //提示完正常
+        }
     }
-    else if (oled_mode == 0)
+    else if (oled_state == 0)
     {
         u8g2.clearBuffer();
         u8g2.sendBuffer();
         Serial.println("oled_off");
     }
-    else if (oled_mode == 2)
-    {
-        // char str_sum[100];//不需要日志注释掉
-        // char *str = &str_sum[0];//不需要日志注释掉
-        u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_wqy16_t_gb2312);
-        u8g2.setCursor(0, 13);
-        u8g2.print("欢迎回来 bszydxh");
-        u8g2.setCursor(0, 30);
-        u8g2.print("灯带就绪...");
-        u8g2.setCursor(0, 47);
-        u8g2.print("显示屏就绪...");
-        u8g2.setFont(u8g2_font_wqy14_t_gb2312);
-        u8g2.setCursor(0, 62);
-        u8g2.print(str4);
-        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        // Serial.println(str);//不需要日志注释掉
-        Serial.println("oled_change");
-        u8g2.sendBuffer();
-        delay(700);
-        oled_mode = 1; //欢迎完正常
-    }
-    else if (oled_mode == 3)
-    {
-        // char str_sum[100];//不需要日志注释掉
-        // char *str = &str_sum[0];//不需要日志注释掉
-        u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_wqy16_t_gb2312);
-        u8g2.setCursor(0, 13);
-        u8g2.print("!!!久坐提醒!!!");
-        u8g2.setCursor(0, 30);
-        u8g2.print("!!!起来动动!!!");
-        u8g2.setCursor(0, 47);
-        u8g2.print("!!!看看远方!!!");
-        u8g2.setFont(u8g2_font_wqy14_t_gb2312);
-        u8g2.setCursor(0, 62);
-        u8g2.print(str4);
-        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        // Serial.println(str);//不需要日志注释掉
-        Serial.println("oled_change");
-        u8g2.sendBuffer();
-        delay(10000);
-        oled_mode = 1; //提示完正常
-    }
 }
-void print_time() //常驻显示任务,必须循环,否则出事
+void print_oled() //常驻显示任务,必须循环,否则出事
 {
-
     if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
     {
         // oled_show("error:404", "pls wait", "retrying...", "");
@@ -517,7 +527,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
     strftime(st, 100, "%a", &timeinfo);
     sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, st); //整合字符串
     strftime(strrr, 100, "%H:%M:%S", &timeinfo);
-    if (task2_running == 0)
+    if (rgb_running == 0)
     {
         if (WiFi.status() == WL_CONNECTED)
         {
@@ -553,6 +563,8 @@ void print_time() //常驻显示任务,必须循环,否则出事
 }
 int counter = 0; //官方计数
 int rgb_screen_on = 0;
+int need_kill_rgb = 0;
+int software_running = 0;
 void button1_callback(const String &state)
 {
     Serial.print("Ada\n");
@@ -585,6 +597,7 @@ void dataRead(const String &data)
 uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;
 void rgb_screen()
 {
+
     // Serial.println("rgb_show");
     //  Wait for first byte of Magic Word
     //魔法包结构 Ada+校验码+rgb数据
@@ -595,13 +608,14 @@ void rgb_screen()
         while (!Serial.available())
             ;
         ;
+        software_running = 1;
         // Check next byte in Magic Word
         if (prefix[i] == Serial.read())
             continue;
         i = 0;
         goto waitLoop;
     }
-
+    software_running = 1;
     // Hi, Lo, Checksum
     while (!Serial.available())
         ;
@@ -645,8 +659,16 @@ void rgb_screen()
         leds[i].b = leds_rgb_mode[i].b;
     }
     portEXIT_CRITICAL(&leds_mutex);
-    // Shows new values
+    // Shows new value
     FastLED.show();
+    // sprintf(aqi_final, "sec");
+    if (need_kill_rgb == 1)
+    {
+        // sprintf(aqi_final, "fail");
+        need_kill_rgb = 0;
+        software_running = 0;
+        vTaskDelete(rgb_run);
+    }
 }
 void miotPowerState(const String &state)
 {
@@ -655,6 +677,7 @@ void miotPowerState(const String &state)
     if (state == BLINKER_CMD_ON)
     {
         light_on = 1;
+        oled_state = 1;
         oled_mode = 2;
         Serial.println("light on");
         mode = 1; //默认日光
@@ -668,16 +691,24 @@ void miotPowerState(const String &state)
     else if (state == BLINKER_CMD_OFF)
     {
         // oled_show("", "", "light off");
-        if (task2_running == 1)
+        if (rgb_running == 1)
         {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
+            if (software_running == 0)
+            {
+                vTaskDelete(rgb_run);
+            }
+            else
+            {
+                need_kill_rgb = 1;
+            }
+            rgb_running = 0;
+            delay(100);
         }
         mode = 0;
         Serial.println("light off");
         delay(150);
         light_change = 1;
-        oled_mode = 0;
+        oled_state = 0;
         light_on = 0;
         off_sitclock();
 
@@ -687,10 +718,18 @@ void miotPowerState(const String &state)
 }
 void miotColor(int32_t color)
 {
-    if (task2_running == 1)
-    {
-        vTaskDelete(rgb_run);
-        task2_running = 0;
+    if (rgb_running == 1)
+        {
+            if (software_running == 0)
+            {
+                vTaskDelete(rgb_run);
+            }
+            else
+            {
+                need_kill_rgb = 1;
+            }
+            rgb_running = 0;
+            delay(100);
     }
     BLINKER_LOG("need set color: ", color);
     light_on = 1; //强制开启
@@ -743,15 +782,22 @@ void miotMode(uint8_t mode_mi)
     mi_mode = mode_mi;
     if (mode_mi == BLINKER_CMD_MIOT_DAY)
     {
-        if (task2_running == 1)
+        if (rgb_running == 1)
         {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
+            if (software_running == 0)
+            {
+                vTaskDelete(rgb_run);
+            }
+            else
+            {
+                need_kill_rgb = 1;
+            }
+            rgb_running = 0;
+            delay(100);
         }
+        light_on = 1;
+        oled_state = 1;
         on_sitclock();
-        light_color_r = 255;
-        light_color_g = 150;
-        light_color_b = 50;
         Serial.print("mi_color||r:");
         Serial.print(light_color_r);
         Serial.print("  g:");
@@ -764,11 +810,21 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_NIGHT)
     {
-        if (task2_running == 1)
+        if (rgb_running == 1)
         {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
+            if (software_running == 0)
+            {
+                vTaskDelete(rgb_run);
+            }
+            else
+            {
+                need_kill_rgb = 1;
+            }
+            rgb_running = 0;
+            delay(100);
         }
+        light_on = 1;
+        oled_state = 1;
         on_sitclock();
         light_color_r = 0;
         light_color_g = 0;
@@ -793,10 +849,18 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_TV)
     {
-        if (task2_running == 1)
+        if (rgb_running == 1)
         {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
+            if (software_running == 0)
+            {
+                vTaskDelete(rgb_run);
+            }
+            else
+            {
+                need_kill_rgb = 1;
+            }
+            rgb_running = 0;
+            delay(100);
         }
         Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
         Udp.print("turn_off");                    //把数据写入发送缓冲区
@@ -808,7 +872,7 @@ void miotMode(uint8_t mode_mi)
         delay(4000);
         light_change = 1;
         mode = 0;
-        oled_mode = 0;
+        oled_state = 0;
         light_on = 0;
         //向udp工具发送消息
 
@@ -817,11 +881,23 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_READING)
     {
-        if (task2_running == 1)
+
+        if (rgb_running == 1)
         {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
+            if (software_running == 0)
+            {
+                vTaskDelete(rgb_run);
+            }
+            else
+            {
+                need_kill_rgb = 1;
+            }
+            rgb_running = 0;
+            delay(100);
         }
+
+        light_on = 1;
+        oled_state = 1;
         on_sitclock();
         light_color_r = 255;
         light_color_g = 150;
@@ -838,6 +914,8 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_COMPUTER)
     {
+        light_on = 1;
+        oled_state = 1;
         rgb_screen_on = 1;
         light_change = 1;
         Serial.print("Ada\n");
@@ -900,7 +978,7 @@ void oledTask(void *xTaskOled) //显示屏任务
 {
     while (1)
     {
-        print_time();
+        print_oled();
         delay(300);
     }
 }
@@ -1018,6 +1096,18 @@ void buttonTask(void *xTaskButton)
         }
         else if (button2_now == 1 && button2_before == 0)
         {
+            if (mi_mode == BLINKER_CMD_MIOT_DAY)
+            {
+                miotMode(BLINKER_CMD_MIOT_COMPUTER);
+            }
+            else if (mi_mode == BLINKER_CMD_MIOT_COMPUTER)
+            {
+                miotMode(BLINKER_CMD_MIOT_DAY);
+            }
+            else
+            {
+                miotMode(BLINKER_CMD_MIOT_DAY);
+            }
             Serial.printf("\n2down\n");
         }
         button1_before = button1_now;
@@ -1027,8 +1117,7 @@ void buttonTask(void *xTaskButton)
 }
 void light()
 {
-
-    if (light_change == 1 && task2_running == 0) // 1 全色
+    if (light_change == 1 && rgb_running == 0) // 1 全色
     {
         int r_all = 0, g_all = 0, b_all = 0;
         portENTER_CRITICAL(&leds_mutex);
@@ -1046,10 +1135,10 @@ void light()
         if (rgb_screen_on == 1)
         {
             rgb_screen_on = 0;
-            task2_running = 1;
+            rgb_running = 1;
             Serial.println("light");
             // off_sitclock();
-            xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, -1, &rgb_run, 1);
+            xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, 2, &rgb_run, 1);
             mode = 2;
             light_change = 0;
             return;
@@ -1065,7 +1154,6 @@ void light()
                 portENTER_CRITICAL(&leds_mutex);
                 for (int8_t i = 0; i < n; i++)
                 {
-
                     leds[23 - i].r = light_change_color_r;
                     leds[23 - i].g = light_change_color_g;
                     leds[23 - i].b = light_change_color_b;
@@ -1236,7 +1324,7 @@ void light()
             }
         }
     }
-    else if (light_change == 1 && task2_running == 1 && mode == 5) // usb模式久坐闪灯
+    else if (light_change == 1 && rgb_running == 1 && mode == 5) // usb模式久坐闪灯
     {
         if (blink_time > 0)
         {
@@ -1341,8 +1429,23 @@ void setup()
         oled_show("smart_screen", "eeprom错误", "请等待", "正在重启...");
         delay(100);
         esp_restart();
+    } //自定义从3000开始
+    Serial.printf("s:%d\n", EEPROM.readInt(3000));
+    if (EEPROM.readInt(3000) == -1)
+    {
+        EEPROM.writeInt(3000, 135);
     }
-    
+    if (EEPROM.readInt(3004) == -1)
+    {
+        EEPROM.writeInt(3004, 206);
+    }
+    if (EEPROM.readInt(3008) == -1)
+    {
+        EEPROM.writeInt(3008, 235);
+    }
+    EEPROM.commit();
+    Serial.printf("p:%d\n", EEPROM.readInt(3000));
+    EEPROM.end();
     Blinker.begin(auth, ssid, password);
     Blinker.attachData(dataRead);
     Button1.attach(button1_callback);
@@ -1360,7 +1463,7 @@ void setup()
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 5120, NULL, 0, NULL, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 5120, NULL, 0, NULL, 0);
-    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, -1, NULL, 1);
+    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, 3, NULL, 1); //请不要动,动了就寄
     xTaskCreatePinnedToCore(buttonTask, "buttonTask", 5120, NULL, 0, NULL, 0);
 }
 void loop()

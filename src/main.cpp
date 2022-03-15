@@ -82,9 +82,9 @@ int32_t light_now = (255 * 256 + 150) * 256 + 50;
 int light_change_color_r = 0xff;
 int light_change_color_g = 0xff;
 int light_change_color_b = 0xff;
-int light_color_r = 255;
-int light_color_g = 150;
-int light_color_b = 50;
+int light_color_r = 135;
+int light_color_g = 206;
+int light_color_b = 235;
 int8_t task2_running = 0;
 ////////////////////////////////////////////////////////////////
 // 蓝牙部分//堆溢出,算了
@@ -495,7 +495,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
         }
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         retry++;
-        if (retry == 20)
+        if (retry == 7)
         {
             Serial.println("error:no connect");
             oled_show("smart_screen", "系统错误", "请等待", "正在重启...");
@@ -974,13 +974,49 @@ void udpTask(void *xTaskUdp)
         delay(3000); //延时3秒
     }
 }
+uint8_t button2_pin = 34;
 uint8_t button1_pin = 35;
+int button1_ok = 0;
+int button2_ok = 0;
+int button1_now = 0;
+int button2_now = 0;
+int button1_before = 0;
+int button2_before = 0;
 void buttonTask(void *xTaskButton)
 {
-    while(1)
+    while (1)
     {
-        Serial.printf("pin:%d",digitalRead(button1_pin));
-        delay(100);
+        // Serial.printf("pin1:%d;", digitalRead(button1_pin));
+        // Serial.printf("pin2:%d;\n", digitalRead(button2_pin));
+        button1_now = digitalRead(button1_pin);
+        button2_now = digitalRead(button2_pin);
+        if (button1_now == 0 && button1_before == 1)
+        {
+            Serial.printf("\n1up\n");
+        }
+        else if (button1_now == 1 && button1_before == 0)
+        {
+            Serial.printf("\n1down\n");
+            if (light_on == 1)
+            {
+                miotPowerState("off");
+            }
+            else if (light_on == 0)
+            {
+                miotPowerState("on");
+            }
+        }
+        if (button2_now == 0 && button2_before == 1)
+        {
+            Serial.printf("\n2up\n");
+        }
+        else if (button2_now == 1 && button2_before == 0)
+        {
+            Serial.printf("\n2down\n");
+        }
+        button1_before = button1_now;
+        button2_before = button2_now;
+        delay(10);
     }
 }
 void light()
@@ -1293,6 +1329,14 @@ void setup()
     {
         Serial.println("监听失败");
     }
+    if (!EEPROM.begin(5120))
+    {
+        Serial.println("eeprom fail!");
+        oled_show("smart_screen", "eeprom错误", "请等待", "正在重启...");
+        delay(100);
+        esp_restart();
+    }
+    
     Blinker.begin(auth, ssid, password);
     Blinker.attachData(dataRead);
     Button1.attach(button1_callback);
@@ -1304,12 +1348,14 @@ void setup()
     BlinkerMIOT.attachQuery(miotQuery);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
-
+    pinMode(34, INPUT);
+    pinMode(35, INPUT);
     xTaskCreatePinnedToCore(oledTask, "oledTask", 2048, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 5120, NULL, 0, NULL, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 5120, NULL, 0, NULL, 0);
     xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, -1, NULL, 1);
+    xTaskCreatePinnedToCore(buttonTask, "buttonTask", 5120, NULL, 0, NULL, 0);
 }
 void loop()
 {

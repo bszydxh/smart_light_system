@@ -974,11 +974,15 @@ void udpTask(void *xTaskUdp)
         delay(3000); //延时3秒
     }
 }
-// void xTaskFive(void *xTask5) //蓝牙任务
-// {
-//         BLEDevice::init("esp32");
-//         vTaskDelete(NULL);
-// }
+uint8_t button1_pin = 35;
+void buttonTask(void *xTaskButton)
+{
+    while(1)
+    {
+        Serial.printf("pin:%d",digitalRead(button1_pin));
+        delay(100);
+    }
+}
 void light()
 {
 

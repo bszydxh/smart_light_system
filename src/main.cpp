@@ -29,7 +29,13 @@
 #include "Blinker.h"
 #include "FastLED.h"
 #include "WiFiUdp.h"
-#include "esp_task_wdt.h"
+#include "esp_task_wdt.h"//下面是和风天气的api,api的key手动再申请罢,一天3000次
+#define URL "https://devapi.qweather.com/v7/weather/now?location=xxx&key=xxx&gzip=n"
+#define URL2 "https://devapi.qweather.com/v7/air/now?location=xxx&key=xxx&gzip=n"
+#define SSID ""
+#define PASSWORD ""
+#define AUTH_KEY ""
+//定义五行后把下面的include去掉
 #include "password.cpp"
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义

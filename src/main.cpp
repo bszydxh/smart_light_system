@@ -1333,7 +1333,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                 }
                 else if (mode == 5)
                 {
-                    mode == 2;
+                    mode = 2;
                 }
             }
             else if (rgb_running == 1 && mode == 5) // usb模式久坐闪灯

@@ -1149,7 +1149,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                     // xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, 2, &rgb_run, 1);
                     mode = 2;
                     light_change = 0;
-                    return;
+                    continue;
                 }
                 if (mode == 1 || mode == 3) //换亮度/色彩/////mode2悬空给rgb
                 {

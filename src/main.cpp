@@ -985,7 +985,6 @@ void oledTask(void *xTaskOled) //显示屏任务
         delay(300);
     }
 }
-
 void blinkerTask(void *xTaskBlinker) // blinker任务
 {
     while (1)
@@ -1366,7 +1365,6 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
         delay(100);
     }
 }
-
 void setup()
 {
     Serial.begin(460800);

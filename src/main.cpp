@@ -4,7 +4,14 @@
 14 -> 显示屏数据信号(sda)
 25 -> 灯带pwm信号
 */
+/*
+EEPROM 3000-5120自定义
+3000 r
+3004 g
+3008 b
+*/
 /*系统由freertos接管*/
+/*delay()就是vTaskdelay(),不信自己跳转看一下*/
 #include <Arduino.h> //主依赖,具体依赖见依赖树
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖
@@ -29,7 +36,13 @@
 #include "Blinker.h"
 #include "FastLED.h"
 #include "WiFiUdp.h"
-#include "esp_task_wdt.h"
+#include "esp_task_wdt.h" //下面是和风天气的api,api的key手动再申请罢,一天3000次
+#define URL "https://devapi.qweather.com/v7/weather/now?location=xxx&key=xxx&gzip=n"
+#define URL2 "https://devapi.qweather.com/v7/air/now?location=xxx&key=xxx&gzip=n"
+#define SSID ""
+#define PASSWORD ""
+#define AUTH_KEY ""
+//定义五行后把下面的include去掉
 #include "password.cpp"
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义
@@ -46,9 +59,8 @@ TaskHandle_t sitclock_run;
 //全局初始化
 WiFiUDP Udp;
 int8_t start_setup = 1;
-struct tm timeinfo; //时间信息
-int retry = 0;      //记录重试次数,全局变量
-int ok = 0;
+struct tm timeinfo;      //时间信息
+int retry = 0;           //记录重试次数,全局变量
 const char *ssid = SSID; //定义一个字符串(指针定义法)
 const char *password = PASSWORD;
 const char *auth = AUTH_KEY;
@@ -66,26 +78,21 @@ BlinkerNumber Number1(n_name);
 BlinkerRGB RGB1(r_name);
 ////////////////////////////////////////////////////////////////
 //灯光状态部分,字面意思
-int8_t oled_mode = 1;      //显示屏模式 1 正常 0 关闭 2 欢迎 3 久坐
-int8_t light_on = 0;       //灯带开关,用于状态回调,修改该值不能控制
-int8_t mode = 0;           //!!!!灯光改变模式,并非小爱指定的模式!!!!
-int8_t mi_mode = 0;        //小爱指定的模式,用于回调,与逻辑耦合的不是那么深,默认日光
-int mi_light_bright = 100; //小爱指定的亮度,用于回调,与逻辑耦合的不是那么深,默认100
-int8_t light_change = 0;
-int light_now_brightness = 255;
-int light_change_brightness = 255;
-int light_brightness = 255;
-int light_now_color_r = 0;
-int light_now_color_g = 0;
-int light_now_color_b = 0;
-int32_t light_now = (255 * 256 + 150) * 256 + 50;
-int light_change_color_r = 0xff;
-int light_change_color_g = 0xff;
-int light_change_color_b = 0xff;
-int light_color_r = 255;
-int light_color_g = 150;
-int light_color_b = 50;
-int8_t task2_running = 0;
+int8_t oled_state = 1;                             //通信量,显示屏开关
+int8_t oled_mode = 1;                              //通信量,显示屏模式 1 正常2 欢迎 3 久坐
+int8_t mode = 0;                                   //通信量,灯光改变模式,并非小爱指定的模式,
+int8_t light_on = 0;                               //小爱指定的开关状态,用于回调,与逻辑耦合的不是那么深,默认关
+int8_t mi_mode = 0;                                //小爱指定的模式,用于回调,与逻辑耦合的不是那么深,默认日光
+int mi_light_bright = 100;                         //小爱指定的亮度,用于回调,与逻辑耦合的不是那么深,默认100
+int32_t light_now = (135 * 256 + 206) * 256 + 235; //小爱指定的颜色,用于回调,与逻辑耦合的不是那么深,默认天蓝色,具体读eeprom里面的
+int8_t light_change = 0;                           //信号量,控制灯光
+int8_t rgb_running = 0;                            //信号量,控制流光溢彩
+int light_brightness = 255;                        //通信量
+int light_color_r = 135;                           //通信量
+int light_color_g = 206;                           //通信量
+int light_color_b = 235;                           //通信量
+////////////////////////////////////////////////////////////////
+
 ////////////////////////////////////////////////////////////////
 // 蓝牙部分//堆溢出,算了
 // int scanTime = 5; //In seconds
@@ -125,6 +132,9 @@ char humidity_final[10] = " ";
 char aqi_final[10] = " ";
 char category_final[30] = " ";
 char hitokoto_final[100] = "松花酿酒,春水煎茶。";
+////////////////////////////////////////////////////////////////
+//函数预定义部分
+void oled_show(const char *str1, const char *str2, const char *str3, const char *str4); //提供三行英文输出
 ////////////////////////////////////////////////////////////////
 //久坐提醒部分,默认1h
 //算是手写看门狗...咬自己...
@@ -186,7 +196,7 @@ void sitclock_task(void *sitclock_task_pointer)
     while (1)
     {
         Serial.printf("sit clock try ");
-        if (is_sitclock() == 1 && task2_running == 0)
+        if (is_sitclock() == 1 && rgb_running == 0)
         {
             printf("sit clock warning!!!");
             //久坐之后的操作
@@ -196,7 +206,7 @@ void sitclock_task(void *sitclock_task_pointer)
             blink_time = 3;
             reset_sitclock_limit();
         }
-        else if (is_sitclock() == 1 && task2_running == 1)
+        else if (is_sitclock() == 1 && rgb_running == 1)
         {
             printf("sit clock warning!!!");
             //久坐之后的操作
@@ -218,6 +228,57 @@ void on_sitclock() //跟开灯绑定(含类似行为)
     }
     sitclock_on = 1;
     Serial.println("sitclock start!");
+}
+////////////////////////////////////////////////////////////////
+// eeprom掉电保护部分
+void EEPROM_setup()
+{
+    if (!EEPROM.begin(5120))
+    {
+        Serial.println("eeprom fail!");
+        oled_show("smart_screen", "eeprom错误", "请等待", "正在重启...");
+        delay(100);
+        esp_restart();
+    } //自定义从3000开始
+    Serial.printf("s:%d\n", EEPROM.readInt(3000));
+    if (EEPROM.readInt(3000) == -1)
+    {
+        EEPROM.writeInt(3000, 135);
+        EEPROM.commit();
+    }
+    if (EEPROM.readInt(3004) == -1)
+    {
+        EEPROM.writeInt(3004, 206);
+        EEPROM.commit();
+    }
+    if (EEPROM.readInt(3008) == -1)
+    {
+        EEPROM.writeInt(3008, 235);
+        EEPROM.commit();
+    }
+    light_color_r = EEPROM.readInt(3000);
+    light_color_g = EEPROM.readInt(3004);
+    light_color_b = EEPROM.readInt(3008);
+    Serial.printf("rgb:%d:%d:%d", light_color_r, light_color_g, light_color_b);
+    light_now = (light_color_r * 256 + light_color_g) * 256 + light_color_b; //小爱指定的颜色,用于回调,与逻辑耦合的不是那么深,默认天蓝色,具体读eeprom里面的
+    // Serial.printf("p:%d\n", EEPROM.readInt(3000));
+}
+void EEPROM_rgb_commit()
+{
+    if (!EEPROM.begin(5120))
+    {
+        Serial.println("eeprom fail!");
+        oled_show("smart_screen", "eeprom错误", "请等待", "正在重启...");
+        delay(100);
+        esp_restart();
+    } //自定义从3000开始
+    // Serial.printf("eeprom rgb commit check!\nrgb:%d:%d:%d\n", EEPROM.readInt(3000), EEPROM.readInt(3004), EEPROM.readInt(3008));
+    EEPROM.writeInt(3000, light_color_r);
+    EEPROM.writeInt(3004, light_color_g);
+    EEPROM.writeInt(3008, light_color_b);
+    EEPROM.commit();
+    Serial.printf("eeprom rgb commit success!\nrgb:%d:%d:%d\n", EEPROM.readInt(3000), EEPROM.readInt(3004), EEPROM.readInt(3008));
+    EEPROM.end();
 }
 ////////////////////////////////////////////////////////////////
 void esp32_Http_covid()
@@ -396,85 +457,87 @@ void esp32_Http_hitokoto()
 //显示屏开关
 void oled_show(const char *str1, const char *str2, const char *str3, const char *str4) //提供三行英文输出
 {
-    if (oled_mode == 1)
+    if (oled_state == 1)
     {
-        // char str_sum[100];//不需要日志注释掉
-        // char *str = &str_sum[0];//不需要日志注释掉
-        u8g2.clearBuffer();
-        // u8g2.setFont(u8g2_font_ncenB12_tr);
-        u8g2.setFont(u8g2_font_wqy16_t_gb2312);
-        // u8g2.drawStr(0, 12, str1);
-        // u8g2.drawStr(0, 27, str2);
-        // u8g2.drawStr(0, 42, str3);
-        //  u8g2.drawStr(0, 57, str4);
-        u8g2.setCursor(0, 13);
-        u8g2.print(str1);
-        u8g2.setCursor(0, 30);
-        u8g2.print(str2);
-        u8g2.setCursor(0, 47);
-        u8g2.print(str3);
-        u8g2.setFont(u8g2_font_wqy14_t_gb2312);
-        u8g2.setCursor(0, 62);
-        u8g2.print(str4);
-        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        // Serial.println(str);//不需要日志注释掉
-        Serial.println("oled_change");
-        u8g2.sendBuffer();
+        if (oled_mode == 1)
+        {
+            // char str_sum[100];//不需要日志注释掉
+            // char *str = &str_sum[0];//不需要日志注释掉
+            u8g2.clearBuffer();
+            // u8g2.setFont(u8g2_font_ncenB12_tr);
+            u8g2.setFont(u8g2_font_wqy16_t_gb2312);
+            // u8g2.drawStr(0, 12, str1);
+            // u8g2.drawStr(0, 27, str2);
+            // u8g2.drawStr(0, 42, str3);
+            //  u8g2.drawStr(0, 57, str4);
+            u8g2.setCursor(0, 13);
+            u8g2.print(str1);
+            u8g2.setCursor(0, 30);
+            u8g2.print(str2);
+            u8g2.setCursor(0, 47);
+            u8g2.print(str3);
+            u8g2.setFont(u8g2_font_wqy14_t_gb2312);
+            u8g2.setCursor(0, 62);
+            u8g2.print(str4);
+            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+            // Serial.println(str);//不需要日志注释掉
+            Serial.println("oled_change");
+            u8g2.sendBuffer();
+        }
+        else if (oled_mode == 2)
+        {
+            // char str_sum[100];//不需要日志注释掉
+            // char *str = &str_sum[0];//不需要日志注释掉
+            u8g2.clearBuffer();
+            u8g2.setFont(u8g2_font_wqy16_t_gb2312);
+            u8g2.setCursor(0, 13);
+            u8g2.print("欢迎回来 bszydxh");
+            u8g2.setCursor(0, 30);
+            u8g2.print("灯带就绪...");
+            u8g2.setCursor(0, 47);
+            u8g2.print("显示屏就绪...");
+            u8g2.setFont(u8g2_font_wqy14_t_gb2312);
+            u8g2.setCursor(0, 62);
+            u8g2.print(str4);
+            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+            // Serial.println(str);//不需要日志注释掉
+            Serial.println("oled_change");
+            u8g2.sendBuffer();
+            delay(700);
+            oled_mode = 1; //欢迎完正常
+        }
+        else if (oled_mode == 3)
+        {
+            // char str_sum[100];//不需要日志注释掉
+            // char *str = &str_sum[0];//不需要日志注释掉
+            u8g2.clearBuffer();
+            u8g2.setFont(u8g2_font_wqy16_t_gb2312);
+            u8g2.setCursor(0, 13);
+            u8g2.print("!!!久坐提醒!!!");
+            u8g2.setCursor(0, 30);
+            u8g2.print("!!!起来动动!!!");
+            u8g2.setCursor(0, 47);
+            u8g2.print("!!!看看远方!!!");
+            u8g2.setFont(u8g2_font_wqy14_t_gb2312);
+            u8g2.setCursor(0, 62);
+            u8g2.print(str4);
+            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
+            // Serial.println(str);//不需要日志注释掉
+            Serial.println("oled_change");
+            u8g2.sendBuffer();
+            delay(10000);
+            oled_mode = 1; //提示完正常
+        }
     }
-    else if (oled_mode == 0)
+    else if (oled_state == 0)
     {
         u8g2.clearBuffer();
         u8g2.sendBuffer();
         Serial.println("oled_off");
     }
-    else if (oled_mode == 2)
-    {
-        // char str_sum[100];//不需要日志注释掉
-        // char *str = &str_sum[0];//不需要日志注释掉
-        u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_wqy16_t_gb2312);
-        u8g2.setCursor(0, 13);
-        u8g2.print("欢迎回来 bszydxh");
-        u8g2.setCursor(0, 30);
-        u8g2.print("灯带就绪...");
-        u8g2.setCursor(0, 47);
-        u8g2.print("显示屏就绪...");
-        u8g2.setFont(u8g2_font_wqy14_t_gb2312);
-        u8g2.setCursor(0, 62);
-        u8g2.print(str4);
-        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        // Serial.println(str);//不需要日志注释掉
-        Serial.println("oled_change");
-        u8g2.sendBuffer();
-        delay(700);
-        oled_mode = 1; //欢迎完正常
-    }
-    else if (oled_mode == 3)
-    {
-        // char str_sum[100];//不需要日志注释掉
-        // char *str = &str_sum[0];//不需要日志注释掉
-        u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_wqy16_t_gb2312);
-        u8g2.setCursor(0, 13);
-        u8g2.print("!!!久坐提醒!!!");
-        u8g2.setCursor(0, 30);
-        u8g2.print("!!!起来动动!!!");
-        u8g2.setCursor(0, 47);
-        u8g2.print("!!!看看远方!!!");
-        u8g2.setFont(u8g2_font_wqy14_t_gb2312);
-        u8g2.setCursor(0, 62);
-        u8g2.print(str4);
-        // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-        // Serial.println(str);//不需要日志注释掉
-        Serial.println("oled_change");
-        u8g2.sendBuffer();
-        delay(10000);
-        oled_mode = 1; //提示完正常
-    }
 }
-void print_time() //常驻显示任务,必须循环,否则出事
+void print_oled() //常驻显示任务,必须循环,否则出事
 {
-
     if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
     {
         // oled_show("error:404", "pls wait", "retrying...", "");
@@ -495,7 +558,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
         }
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
         retry++;
-        if (retry == 20)
+        if (retry == 7)
         {
             Serial.println("error:no connect");
             oled_show("smart_screen", "系统错误", "请等待", "正在重启...");
@@ -511,7 +574,7 @@ void print_time() //常驻显示任务,必须循环,否则出事
     strftime(st, 100, "%a", &timeinfo);
     sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, st); //整合字符串
     strftime(strrr, 100, "%H:%M:%S", &timeinfo);
-    if (task2_running == 0)
+    if (rgb_running == 0)
     {
         if (WiFi.status() == WL_CONNECTED)
         {
@@ -545,13 +608,12 @@ void print_time() //常驻显示任务,必须循环,否则出事
     }*/
     // Serial.println(&timeinfo, "%F %T %A");//日志
 }
-int counter = 0; //官方计数
-int rgb_screen_on = 0;
+int counter = 0;       //官方计数
+int rgb_screen_on = 0; //逻辑上 rgb_screen ~= light_change 但light>rgb>mode
+int rgb_frist_running = 0;
 void button1_callback(const String &state)
 {
-    Serial.print("Ada\n");
-    rgb_screen_on = 1;
-    light_change = 1;
+    //./././
 }
 void rgb1_callback(uint8_t r_value, uint8_t g_value, uint8_t b_value, uint8_t bright_value)
 {
@@ -561,6 +623,7 @@ void rgb1_callback(uint8_t r_value, uint8_t g_value, uint8_t b_value, uint8_t br
     light_color_r = r_value;
     light_color_g = g_value;
     light_color_b = b_value;
+    EEPROM_rgb_commit();
     Serial.print("blinker_color||r:");
     Serial.print(light_color_r);
     Serial.print("  g:");
@@ -595,7 +658,6 @@ void rgb_screen()
         i = 0;
         goto waitLoop;
     }
-
     // Hi, Lo, Checksum
     while (!Serial.available())
         ;
@@ -613,8 +675,7 @@ void rgb_screen()
     {
         i = 0;
         goto waitLoop;
-    }                                                //线程阻断
-    memset(leds, 0, NUM_LEDS * sizeof(struct CRGB)); //将leds空间置零
+    } //线程阻断
     for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
         byte r, g, b;
@@ -639,8 +700,34 @@ void rgb_screen()
         leds[i].b = leds_rgb_mode[i].b;
     }
     portEXIT_CRITICAL(&leds_mutex);
-    // Shows new values
-    FastLED.show();
+    // Shows new value
+    // FastLED.show();
+    // sprintf(aqi_final, "sec");
+}
+void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
+{
+    while (1)
+    {
+        rgb_screen();
+    }
+}
+void rgb_task_run()
+{
+    rgb_running = 1;
+    if (rgb_frist_running == 0)
+    {
+        xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, 2, &rgb_run, 1);
+        rgb_frist_running = 1;
+    }
+    else
+    {
+        vTaskResume(rgb_run);
+    }
+}
+void rgb_task_shutdown()
+{
+    vTaskSuspend(rgb_run);
+    rgb_running = 0;
 }
 void miotPowerState(const String &state)
 {
@@ -649,6 +736,7 @@ void miotPowerState(const String &state)
     if (state == BLINKER_CMD_ON)
     {
         light_on = 1;
+        oled_state = 1;
         oled_mode = 2;
         Serial.println("light on");
         mode = 1; //默认日光
@@ -662,16 +750,12 @@ void miotPowerState(const String &state)
     else if (state == BLINKER_CMD_OFF)
     {
         // oled_show("", "", "light off");
-        if (task2_running == 1)
-        {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
-        }
+        rgb_task_shutdown();
         mode = 0;
         Serial.println("light off");
         delay(150);
         light_change = 1;
-        oled_mode = 0;
+        oled_state = 0;
         light_on = 0;
         off_sitclock();
 
@@ -681,11 +765,7 @@ void miotPowerState(const String &state)
 }
 void miotColor(int32_t color)
 {
-    if (task2_running == 1)
-    {
-        vTaskDelete(rgb_run);
-        task2_running = 0;
-    }
+    rgb_task_shutdown();
     BLINKER_LOG("need set color: ", color);
     light_on = 1; //强制开启
     light_now = color;
@@ -704,6 +784,7 @@ void miotColor(int32_t color)
         light_color_g = 150;
         light_color_b = 50;
     }
+    EEPROM_rgb_commit();
     Serial.print("mi_color||r:");
     Serial.print(light_color_r);
     Serial.print("  g:");
@@ -737,15 +818,10 @@ void miotMode(uint8_t mode_mi)
     mi_mode = mode_mi;
     if (mode_mi == BLINKER_CMD_MIOT_DAY)
     {
-        if (task2_running == 1)
-        {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
-        }
+        rgb_task_shutdown();
+        light_on = 1;
+        oled_state = 1;
         on_sitclock();
-        light_color_r = 255;
-        light_color_g = 150;
-        light_color_b = 50;
         Serial.print("mi_color||r:");
         Serial.print(light_color_r);
         Serial.print("  g:");
@@ -758,15 +834,14 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_NIGHT)
     {
-        if (task2_running == 1)
-        {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
-        }
+        rgb_task_shutdown();
+        light_on = 1;
+        oled_state = 1;
         on_sitclock();
         light_color_r = 0;
         light_color_g = 0;
         light_color_b = 255;
+        EEPROM_rgb_commit();
         Serial.print("mi_color||r:");
         Serial.print(light_color_r);
         Serial.print("  g:");
@@ -787,11 +862,7 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_TV)
     {
-        if (task2_running == 1)
-        {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
-        }
+        rgb_task_shutdown();
         Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
         Udp.print("turn_off");                    //把数据写入发送缓冲区
         Udp.endPacket();                          //发送数据
@@ -802,7 +873,7 @@ void miotMode(uint8_t mode_mi)
         delay(4000);
         light_change = 1;
         mode = 0;
-        oled_mode = 0;
+        oled_state = 0;
         light_on = 0;
         //向udp工具发送消息
 
@@ -811,15 +882,15 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_READING)
     {
-        if (task2_running == 1)
-        {
-            vTaskDelete(rgb_run);
-            task2_running = 0;
-        }
+
+        rgb_task_shutdown();
+        light_on = 1;
+        oled_state = 1;
         on_sitclock();
         light_color_r = 255;
         light_color_g = 150;
         light_color_b = 50;
+        EEPROM_rgb_commit();
         Serial.print("mi_color||r:");
         Serial.print(light_color_r);
         Serial.print("  g:");
@@ -832,6 +903,8 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_COMPUTER)
     {
+        light_on = 1;
+        oled_state = 1;
         rgb_screen_on = 1;
         light_change = 1;
         Serial.print("Ada\n");
@@ -894,15 +967,8 @@ void oledTask(void *xTaskOled) //显示屏任务
 {
     while (1)
     {
-        print_time();
+        print_oled();
         delay(300);
-    }
-}
-void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
-{
-    while (1)
-    {
-        rgb_screen();
     }
 }
 void blinkerTask(void *xTaskBlinker) // blinker任务
@@ -974,258 +1040,325 @@ void udpTask(void *xTaskUdp)
         delay(3000); //延时3秒
     }
 }
-// void xTaskFive(void *xTask5) //蓝牙任务
-// {
-//         BLEDevice::init("esp32");
-//         vTaskDelete(NULL);
-// }
-void light()
+void buttonTask(void *xTaskButton)
 {
-
-    if (light_change == 1 && task2_running == 0) // 1 全色
+    uint8_t button2_pin = 34;
+    uint8_t button1_pin = 35;
+    int button1_now = 0;
+    int button2_now = 0;
+    int button1_before = 0;
+    int button2_before = 0;
+    while (1)
     {
-        int r_all = 0, g_all = 0, b_all = 0;
-        portENTER_CRITICAL(&leds_mutex);
-        for (int i = 0; i < 120; i++)
+        // Serial.printf("pin1:%d;", digitalRead(button1_pin));
+        // Serial.printf("pin2:%d;\n", digitalRead(button2_pin));
+        button1_now = digitalRead(button1_pin);
+        button2_now = digitalRead(button2_pin);
+        if (button1_now == 0 && button1_before == 1)
         {
-            r_all = leds[i].r + r_all;
-            g_all = leds[i].g + g_all;
-            b_all = leds[i].b + b_all;
+            Serial.printf("\n1up\n");
         }
-        portEXIT_CRITICAL(&leds_mutex);
-        light_now_color_r = r_all / 120;
-        light_now_color_g = g_all / 120;
-        light_now_color_b = b_all / 120;
-        // Move a single white led
-        if (rgb_screen_on == 1)
+        else if (button1_now == 1 && button1_before == 0)
         {
-            rgb_screen_on = 0;
-            task2_running = 1;
-            Serial.println("light");
-            // off_sitclock();
-            xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, -1, &rgb_run, 1);
-            mode = 2;
-            light_change = 0;
-            return;
-        }
-        if (mode == 1 || mode == 3) //换亮度/色彩/////mode2悬空给rgb
-        {
-            for (int8_t n = 1; n <= 24; n++)
+            Serial.printf("\n1down\n");
+            if (light_on == 1)
             {
-                light_change_color_r = light_now_color_r + (light_color_r - light_now_color_r) * n / 24;
-                light_change_color_g = light_now_color_g + (light_color_g - light_now_color_g) * n / 24;
-                light_change_color_b = light_now_color_b + (light_color_b - light_now_color_b) * n / 24;
-                light_change_brightness = light_now_brightness + (light_brightness - light_now_brightness) * n / 24;
-                portENTER_CRITICAL(&leds_mutex);
-                for (int8_t i = 0; i < n; i++)
-                {
-
-                    leds[23 - i].r = light_change_color_r;
-                    leds[23 - i].g = light_change_color_g;
-                    leds[23 - i].b = light_change_color_b;
-                    leds[24 + i].r = light_change_color_r;
-                    leds[24 + i].g = light_change_color_g;
-                    leds[24 + i].b = light_change_color_b;
-                    leds[71 - i].r = light_change_color_r;
-                    leds[71 - i].g = light_change_color_g;
-                    leds[71 - i].b = light_change_color_b;
-                    leds[72 + i].r = light_change_color_r;
-                    leds[72 + i].g = light_change_color_g;
-                    leds[72 + i].b = light_change_color_b;
-                    leds[96 + i].r = light_change_color_r;
-                    leds[96 + i].g = light_change_color_g;
-                    leds[96 + i].b = light_change_color_b;
-                }
-                portEXIT_CRITICAL(&leds_mutex);
-                FastLED.setBrightness(light_change_brightness);
-                light_change = 0;
-                Serial.print("r:");
-                Serial.print(light_change_color_r);
-                Serial.print("  g:");
-                Serial.print(light_change_color_g);
-                Serial.print("  b:");
-                Serial.print(light_change_color_b);
-                Serial.print("  l:");
-                Serial.println(light_change_brightness);
-                delay(10);
-                FastLED.show();
+                miotPowerState("off");
             }
-            light_now_color_r = light_color_r;
-            light_now_color_g = light_color_g;
-            light_now_color_b = light_color_b;
-            light_now_brightness = light_brightness;
-            Serial.println("led on");
-        }
-        else if (mode == 0) //关led
-        {
-            for (int8_t n = 1; n <= 24; n++)
+            else if (light_on == 0)
             {
-                light_change_color_r = light_now_color_r + (0 - light_now_color_r) * n / 24;
-                light_change_color_g = light_now_color_g + (0 - light_now_color_g) * n / 24;
-                light_change_color_b = light_now_color_b + (0 - light_now_color_b) * n / 24;
-                portENTER_CRITICAL(&leds_mutex);
-                for (int8_t i = 0; i < n; i++)
-                {
-                    leds[23 - i].r = light_change_color_r;
-                    leds[23 - i].g = light_change_color_g;
-                    leds[23 - i].b = light_change_color_b;
-                    leds[24 + i].r = light_change_color_r;
-                    leds[24 + i].g = light_change_color_g;
-                    leds[24 + i].b = light_change_color_b;
-                    leds[71 - i].r = light_change_color_r;
-                    leds[71 - i].g = light_change_color_g;
-                    leds[71 - i].b = light_change_color_b;
-                    leds[72 + i].r = light_change_color_r;
-                    leds[72 + i].g = light_change_color_g;
-                    leds[72 + i].b = light_change_color_b;
-                    leds[96 + i].r = light_change_color_r;
-                    leds[96 + i].g = light_change_color_g;
-                    leds[96 + i].b = light_change_color_b;
-                }
-                portEXIT_CRITICAL(&leds_mutex);
-                light_change = 0;
-                Serial.print("r:");
-                Serial.print(light_change_color_r);
-                Serial.print("  g:");
-                Serial.print(light_change_color_g);
-                Serial.print("  b:");
-                Serial.print(light_change_color_b);
-                Serial.print("  l:");
-                Serial.println(light_change_brightness);
-                delay(10);
-                FastLED.show();
+                miotPowerState("on");
             }
-            Serial.println("led off");
-            light_now_color_r = 0;
-            light_now_color_g = 0;
-            light_now_color_b = 0;
         }
-        else if (mode == 4) //久坐闪灯
+        if (button2_now == 0 && button2_before == 1)
         {
-            if (blink_time > 0)
+            Serial.printf("\n2up\n");
+        }
+        else if (button2_now == 1 && button2_before == 0)
+        {
+            if (mi_mode == BLINKER_CMD_MIOT_DAY)
             {
-                for (int8_t n = 1; n <= 24; n++)
-                {
-                    light_change_color_r = light_now_color_r + (255 - light_now_color_r) * n / 24;
-                    light_change_color_g = light_now_color_g + (0 - light_now_color_g) * n / 24;
-                    light_change_color_b = light_now_color_b + (0 - light_now_color_b) * n / 24;
-                    portENTER_CRITICAL(&leds_mutex);
-                    for (int8_t i = 0; i < n; i++)
-                    {
-                        leds[23 - i].r = light_change_color_r;
-                        leds[23 - i].g = light_change_color_g;
-                        leds[23 - i].b = light_change_color_b;
-                        leds[24 + i].r = light_change_color_r;
-                        leds[24 + i].g = light_change_color_g;
-                        leds[24 + i].b = light_change_color_b;
-                        leds[71 - i].r = light_change_color_r;
-                        leds[71 - i].g = light_change_color_g;
-                        leds[71 - i].b = light_change_color_b;
-                        leds[72 + i].r = light_change_color_r;
-                        leds[72 + i].g = light_change_color_g;
-                        leds[72 + i].b = light_change_color_b;
-                        leds[96 + i].r = light_change_color_r;
-                        leds[96 + i].g = light_change_color_g;
-                        leds[96 + i].b = light_change_color_b;
-                    }
-                    portEXIT_CRITICAL(&leds_mutex);
-                    Serial.print("r:");
-                    Serial.print(light_change_color_r);
-                    Serial.print("  g:");
-                    Serial.print(light_change_color_g);
-                    Serial.print("  b:");
-                    Serial.print(light_change_color_b);
-                    Serial.print("  l:");
-                    Serial.println(light_change_brightness);
-                    delay(10);
-                    FastLED.show();
-                }
-                Serial.println("led blink");
-                delay(1000);
-                for (int8_t n = 1; n <= 24; n++)
-                {
-                    light_change_color_r = 255 + (light_now_color_r - 255) * n / 24;
-                    light_change_color_g = 0 + (light_now_color_g - 0) * n / 24;
-                    light_change_color_b = 0 + (light_now_color_b - 0) * n / 24;
-                    portENTER_CRITICAL(&leds_mutex);
-                    for (int8_t i = 0; i < n; i++)
-                    {
-                        leds[23 - i].r = light_change_color_r;
-                        leds[23 - i].g = light_change_color_g;
-                        leds[23 - i].b = light_change_color_b;
-                        leds[24 + i].r = light_change_color_r;
-                        leds[24 + i].g = light_change_color_g;
-                        leds[24 + i].b = light_change_color_b;
-                        leds[71 - i].r = light_change_color_r;
-                        leds[71 - i].g = light_change_color_g;
-                        leds[71 - i].b = light_change_color_b;
-                        leds[72 + i].r = light_change_color_r;
-                        leds[72 + i].g = light_change_color_g;
-                        leds[72 + i].b = light_change_color_b;
-                        leds[96 + i].r = light_change_color_r;
-                        leds[96 + i].g = light_change_color_g;
-                        leds[96 + i].b = light_change_color_b;
-                    }
-                    portEXIT_CRITICAL(&leds_mutex);
-                    Serial.print("r:");
-                    Serial.print(light_change_color_r);
-                    Serial.print("  g:");
-                    Serial.print(light_change_color_g);
-                    Serial.print("  b:");
-                    Serial.print(light_change_color_b);
-                    Serial.print("  l:");
-                    Serial.println(light_change_brightness);
-                    delay(10);
-                    FastLED.show();
-                }
-                delay(1000);
-                Serial.println("led blink");
-                blink_time--;
+                miotMode(BLINKER_CMD_MIOT_COMPUTER);
+            }
+            else if (mi_mode == BLINKER_CMD_MIOT_COMPUTER)
+            {
+                miotMode(BLINKER_CMD_MIOT_DAY);
             }
             else
             {
-                light_change = 0;
-                mode = 1;
-                Serial.println("blink failed");
+                miotMode(BLINKER_CMD_MIOT_DAY);
             }
+            Serial.printf("\n2down\n");
         }
+        button1_before = button1_now;
+        button2_before = button2_now;
+        delay(10);
     }
-    else if (light_change == 1 && task2_running == 1 && mode == 5) // usb模式久坐闪灯
+}
+void fastledTask(void *xTaskfastled)
+{
+    while (1)
     {
-        if (blink_time > 0)
-        {
-            vTaskSuspend(rgb_run);
-            portENTER_CRITICAL(&leds_mutex);
-            for (int i = 0; i < 120; i++)
-            {
-                leds[i].r = 255;
-                leds[i].g = 0;
-                leds[i].b = 0;
-            }
-            portEXIT_CRITICAL(&leds_mutex);
-            FastLED.show();
-            delay(1000);
-            vTaskResume(rgb_run);
-            delay(1000);
-            Serial.println("led blink");
-            blink_time--;
-        }
-        else
-        {
-            light_change = 0;
-            Serial.println("blink failed");
-        }
+        FastLED.show();
+        delay(10);
     }
 }
 void rgbChangeTask(void *xTaskRgbChange) //灯条任务
 {
+    int light_now_brightness = 255;
+    int light_change_brightness = 255;
+    int light_now_color_r = 0;
+    int light_now_color_g = 0;
+    int light_now_color_b = 0;
+    int light_change_color_r = 0xff;
+    int light_change_color_g = 0xff;
+    int light_change_color_b = 0xff;
     while (1)
     {
-        light();
+        if (light_change == 1)
+        {
+            if (rgb_running == 0) // 1 全色
+            {
+                int r_all = 0, g_all = 0, b_all = 0;
+                portENTER_CRITICAL(&leds_mutex);
+                for (int i = 0; i < 120; i++)
+                {
+                    r_all = leds[i].r + r_all;
+                    g_all = leds[i].g + g_all;
+                    b_all = leds[i].b + b_all;
+                }
+                portEXIT_CRITICAL(&leds_mutex);
+                light_now_color_r = r_all / 120;
+                light_now_color_g = g_all / 120;
+                light_now_color_b = b_all / 120;
+                // Move a single white led
+                if (rgb_screen_on == 1)
+                {  
+                    rgb_screen_on = 0;
+                    // rgb_running = 1;
+                    rgb_task_run();
+                    Serial.println("light");
+                    // off_sitclock();
+                    // xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, 2, &rgb_run, 1);
+                    mode = 2;
+                    light_change = 0;
+                    continue;
+                }
+                if (mode == 1 || mode == 3) //换亮度/色彩/////mode2悬空给rgb
+                {
+                    for (int8_t n = 1; n <= 24; n++)
+                    {
+                        light_change_color_r = light_now_color_r + (light_color_r - light_now_color_r) * n / 24;
+                        light_change_color_g = light_now_color_g + (light_color_g - light_now_color_g) * n / 24;
+                        light_change_color_b = light_now_color_b + (light_color_b - light_now_color_b) * n / 24;
+                        light_change_brightness = light_now_brightness + (light_brightness - light_now_brightness) * n / 24;
+                        portENTER_CRITICAL(&leds_mutex);
+                        for (int8_t i = 0; i < n; i++)
+                        {
+                            leds[23 - i].r = light_change_color_r;
+                            leds[23 - i].g = light_change_color_g;
+                            leds[23 - i].b = light_change_color_b;
+                            leds[24 + i].r = light_change_color_r;
+                            leds[24 + i].g = light_change_color_g;
+                            leds[24 + i].b = light_change_color_b;
+                            leds[71 - i].r = light_change_color_r;
+                            leds[71 - i].g = light_change_color_g;
+                            leds[71 - i].b = light_change_color_b;
+                            leds[72 + i].r = light_change_color_r;
+                            leds[72 + i].g = light_change_color_g;
+                            leds[72 + i].b = light_change_color_b;
+                            leds[96 + i].r = light_change_color_r;
+                            leds[96 + i].g = light_change_color_g;
+                            leds[96 + i].b = light_change_color_b;
+                        }
+                        portEXIT_CRITICAL(&leds_mutex);
+                        FastLED.setBrightness(light_change_brightness);
+                        light_change = 0;
+                        Serial.print("r:");
+                        Serial.print(light_change_color_r);
+                        Serial.print("  g:");
+                        Serial.print(light_change_color_g);
+                        Serial.print("  b:");
+                        Serial.print(light_change_color_b);
+                        Serial.print("  l:");
+                        Serial.println(light_change_brightness);
+                        delay(10);
+                        // FastLED.show();
+                    }
+                    light_now_color_r = light_color_r;
+                    light_now_color_g = light_color_g;
+                    light_now_color_b = light_color_b;
+                    light_now_brightness = light_brightness;
+                    Serial.println("led on");
+                }
+                else if (mode == 0) //关led
+                {
+                    for (int8_t n = 1; n <= 24; n++)
+                    {
+                        light_change_color_r = light_now_color_r + (0 - light_now_color_r) * n / 24;
+                        light_change_color_g = light_now_color_g + (0 - light_now_color_g) * n / 24;
+                        light_change_color_b = light_now_color_b + (0 - light_now_color_b) * n / 24;
+                        portENTER_CRITICAL(&leds_mutex);
+                        for (int8_t i = 0; i < n; i++)
+                        {
+                            leds[23 - i].r = light_change_color_r;
+                            leds[23 - i].g = light_change_color_g;
+                            leds[23 - i].b = light_change_color_b;
+                            leds[24 + i].r = light_change_color_r;
+                            leds[24 + i].g = light_change_color_g;
+                            leds[24 + i].b = light_change_color_b;
+                            leds[71 - i].r = light_change_color_r;
+                            leds[71 - i].g = light_change_color_g;
+                            leds[71 - i].b = light_change_color_b;
+                            leds[72 + i].r = light_change_color_r;
+                            leds[72 + i].g = light_change_color_g;
+                            leds[72 + i].b = light_change_color_b;
+                            leds[96 + i].r = light_change_color_r;
+                            leds[96 + i].g = light_change_color_g;
+                            leds[96 + i].b = light_change_color_b;
+                        }
+                        portEXIT_CRITICAL(&leds_mutex);
+                        light_change = 0;
+                        Serial.print("r:");
+                        Serial.print(light_change_color_r);
+                        Serial.print("  g:");
+                        Serial.print(light_change_color_g);
+                        Serial.print("  b:");
+                        Serial.print(light_change_color_b);
+                        Serial.print("  l:");
+                        Serial.println(light_change_brightness);
+                        delay(10);
+                        // FastLED.show();
+                    }
+                    Serial.println("led off");
+                    light_now_color_r = 0;
+                    light_now_color_g = 0;
+                    light_now_color_b = 0;
+                }
+                else if (mode == 4) //久坐闪灯
+                {
+                    if (blink_time > 0)
+                    {
+                        for (int8_t n = 1; n <= 24; n++)
+                        {
+                            light_change_color_r = light_now_color_r + (255 - light_now_color_r) * n / 24;
+                            light_change_color_g = light_now_color_g + (0 - light_now_color_g) * n / 24;
+                            light_change_color_b = light_now_color_b + (0 - light_now_color_b) * n / 24;
+                            portENTER_CRITICAL(&leds_mutex);
+                            for (int8_t i = 0; i < n; i++)
+                            {
+                                leds[23 - i].r = light_change_color_r;
+                                leds[23 - i].g = light_change_color_g;
+                                leds[23 - i].b = light_change_color_b;
+                                leds[24 + i].r = light_change_color_r;
+                                leds[24 + i].g = light_change_color_g;
+                                leds[24 + i].b = light_change_color_b;
+                                leds[71 - i].r = light_change_color_r;
+                                leds[71 - i].g = light_change_color_g;
+                                leds[71 - i].b = light_change_color_b;
+                                leds[72 + i].r = light_change_color_r;
+                                leds[72 + i].g = light_change_color_g;
+                                leds[72 + i].b = light_change_color_b;
+                                leds[96 + i].r = light_change_color_r;
+                                leds[96 + i].g = light_change_color_g;
+                                leds[96 + i].b = light_change_color_b;
+                            }
+                            portEXIT_CRITICAL(&leds_mutex);
+                            Serial.print("r:");
+                            Serial.print(light_change_color_r);
+                            Serial.print("  g:");
+                            Serial.print(light_change_color_g);
+                            Serial.print("  b:");
+                            Serial.print(light_change_color_b);
+                            Serial.print("  l:");
+                            Serial.println(light_change_brightness);
+                            delay(10);
+                            // FastLED.show();
+                        }
+                        Serial.println("led blink");
+                        delay(1000);
+                        for (int8_t n = 1; n <= 24; n++)
+                        {
+                            light_change_color_r = 255 + (light_now_color_r - 255) * n / 24;
+                            light_change_color_g = 0 + (light_now_color_g - 0) * n / 24;
+                            light_change_color_b = 0 + (light_now_color_b - 0) * n / 24;
+                            portENTER_CRITICAL(&leds_mutex);
+                            for (int8_t i = 0; i < n; i++)
+                            {
+                                leds[23 - i].r = light_change_color_r;
+                                leds[23 - i].g = light_change_color_g;
+                                leds[23 - i].b = light_change_color_b;
+                                leds[24 + i].r = light_change_color_r;
+                                leds[24 + i].g = light_change_color_g;
+                                leds[24 + i].b = light_change_color_b;
+                                leds[71 - i].r = light_change_color_r;
+                                leds[71 - i].g = light_change_color_g;
+                                leds[71 - i].b = light_change_color_b;
+                                leds[72 + i].r = light_change_color_r;
+                                leds[72 + i].g = light_change_color_g;
+                                leds[72 + i].b = light_change_color_b;
+                                leds[96 + i].r = light_change_color_r;
+                                leds[96 + i].g = light_change_color_g;
+                                leds[96 + i].b = light_change_color_b;
+                            }
+                            portEXIT_CRITICAL(&leds_mutex);
+                            Serial.print("r:");
+                            Serial.print(light_change_color_r);
+                            Serial.print("  g:");
+                            Serial.print(light_change_color_g);
+                            Serial.print("  b:");
+                            Serial.print(light_change_color_b);
+                            Serial.print("  l:");
+                            Serial.println(light_change_brightness);
+                            delay(10);
+                            // FastLED.show();
+                        }
+                        delay(1000);
+                        Serial.println("led blink");
+                        blink_time--;
+                    }
+                    else
+                    {
+                        light_change = 0;
+                        mode = 1;
+                        Serial.println("blink failed");
+                    }
+                }
+                else if (mode == 5)
+                {
+                    mode = 2;
+                }
+            }
+            else if (rgb_running == 1 && mode == 5) // usb模式久坐闪灯
+            {
+                if (blink_time > 0)
+                {
+                    vTaskSuspend(rgb_run);
+                    portENTER_CRITICAL(&leds_mutex);
+                    for (int i = 0; i < 120; i++)
+                    {
+                        leds[i].r = 255;
+                        leds[i].g = 0;
+                        leds[i].b = 0;
+                    }
+                    portEXIT_CRITICAL(&leds_mutex);
+                    // FastLED.show();
+                    delay(1000);
+                    vTaskResume(rgb_run);
+                    delay(1000);
+                    Serial.println("led blink");
+                    blink_time--;
+                }
+                else
+                {
+                    light_change = 0;
+                    Serial.println("blink failed");
+                }
+            }
+        }
         delay(100);
     }
 }
-
 void setup()
 {
     Serial.begin(460800);
@@ -1246,7 +1379,6 @@ void setup()
     u8g2.begin();
     u8g2.enableUTF8Print();
     WiFi.begin(ssid, password);
-
     oled_show("smart_screen", "---bszydxh", "搜索wifi中...", "初始化灯带...");
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {
@@ -1289,6 +1421,7 @@ void setup()
     {
         Serial.println("监听失败");
     }
+    EEPROM_setup();
     Blinker.begin(auth, ssid, password);
     Blinker.attachData(dataRead);
     Button1.attach(button1_callback);
@@ -1300,12 +1433,15 @@ void setup()
     BlinkerMIOT.attachQuery(miotQuery);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
-
+    pinMode(34, INPUT);
+    pinMode(35, INPUT);
     xTaskCreatePinnedToCore(oledTask, "oledTask", 2048, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 5120, NULL, 0, NULL, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 5120, NULL, 0, NULL, 0);
-    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, -1, NULL, 1);
+    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, 3, NULL, 1); //请不要动,动了就寄
+    xTaskCreatePinnedToCore(buttonTask, "buttonTask", 5120, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(fastledTask, "fastledTask", 5120, NULL, 3, NULL, 1);
 }
 void loop()
 {

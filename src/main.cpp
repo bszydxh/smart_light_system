@@ -610,8 +610,7 @@ void print_oled() //常驻显示任务,必须循环,否则出事
 }
 int counter = 0;       //官方计数
 int rgb_screen_on = 0; //逻辑上 rgb_screen ~= light_change 但light>rgb>mode
-int need_kill_rgb = 0;
-int software_running = 0;
+int rgb_frist_running = 0;
 void button1_callback(const String &state)
 {
     //./././
@@ -653,14 +652,12 @@ void rgb_screen()
         while (!Serial.available())
             ;
         ;
-        software_running = 1;
         // Check next byte in Magic Word
         if (prefix[i] == Serial.read())
             continue;
         i = 0;
         goto waitLoop;
     }
-    software_running = 1;
     // Hi, Lo, Checksum
     while (!Serial.available())
         ;
@@ -678,8 +675,7 @@ void rgb_screen()
     {
         i = 0;
         goto waitLoop;
-    }                                                //线程阻断
-    memset(leds, 0, NUM_LEDS * sizeof(struct CRGB)); //将leds空间置零
+    } //线程阻断
     for (uint8_t i = 0; i < NUM_LEDS; i++)
     {
         byte r, g, b;
@@ -705,15 +701,8 @@ void rgb_screen()
     }
     portEXIT_CRITICAL(&leds_mutex);
     // Shows new value
-    FastLED.show();
+    // FastLED.show();
     // sprintf(aqi_final, "sec");
-    if (need_kill_rgb == 1)
-    {
-        // sprintf(aqi_final, "fail");
-        need_kill_rgb = 0;
-        software_running = 0;
-        vTaskDelete(rgb_run);
-    }
 }
 void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
 {
@@ -725,23 +714,20 @@ void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
 void rgb_task_run()
 {
     rgb_running = 1;
-    xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, 2, &rgb_run, 1);
+    if (rgb_frist_running == 0)
+    {
+        xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, 2, &rgb_run, 1);
+        rgb_frist_running = 1;
+    }
+    else
+    {
+        vTaskResume(rgb_run);
+    }
 }
 void rgb_task_shutdown()
 {
-    if (rgb_running == 1)
-    {
-        if (software_running == 0)
-        {
-            vTaskDelete(rgb_run);
-        }
-        else
-        {
-            need_kill_rgb = 1;
-        }
-        rgb_running = 0;
-        delay(100);
-    }
+    vTaskSuspend(rgb_run);
+    rgb_running = 0;
 }
 void miotPowerState(const String &state)
 {
@@ -1109,6 +1095,14 @@ void buttonTask(void *xTaskButton)
         delay(10);
     }
 }
+void fastledTask(void *xTaskfastled)
+{
+    while (1)
+    {
+        FastLED.show();
+        delay(10);
+    }
+}
 void rgbChangeTask(void *xTaskRgbChange) //灯条任务
 {
     int light_now_brightness = 255;
@@ -1139,7 +1133,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                 light_now_color_b = b_all / 120;
                 // Move a single white led
                 if (rgb_screen_on == 1)
-                {
+                {  
                     rgb_screen_on = 0;
                     // rgb_running = 1;
                     rgb_task_run();
@@ -1189,7 +1183,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                         Serial.print("  l:");
                         Serial.println(light_change_brightness);
                         delay(10);
-                        FastLED.show();
+                        // FastLED.show();
                     }
                     light_now_color_r = light_color_r;
                     light_now_color_g = light_color_g;
@@ -1234,7 +1228,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                         Serial.print("  l:");
                         Serial.println(light_change_brightness);
                         delay(10);
-                        FastLED.show();
+                        // FastLED.show();
                     }
                     Serial.println("led off");
                     light_now_color_r = 0;
@@ -1279,7 +1273,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                             Serial.print("  l:");
                             Serial.println(light_change_brightness);
                             delay(10);
-                            FastLED.show();
+                            // FastLED.show();
                         }
                         Serial.println("led blink");
                         delay(1000);
@@ -1317,7 +1311,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                             Serial.print("  l:");
                             Serial.println(light_change_brightness);
                             delay(10);
-                            FastLED.show();
+                            // FastLED.show();
                         }
                         delay(1000);
                         Serial.println("led blink");
@@ -1348,7 +1342,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                         leds[i].b = 0;
                     }
                     portEXIT_CRITICAL(&leds_mutex);
-                    FastLED.show();
+                    // FastLED.show();
                     delay(1000);
                     vTaskResume(rgb_run);
                     delay(1000);
@@ -1447,6 +1441,7 @@ void setup()
     xTaskCreatePinnedToCore(udpTask, "udpTask", 5120, NULL, 0, NULL, 0);
     xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, 3, NULL, 1); //请不要动,动了就寄
     xTaskCreatePinnedToCore(buttonTask, "buttonTask", 5120, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(fastledTask, "fastledTask", 5120, NULL, 3, NULL, 1);
 }
 void loop()
 {

@@ -726,7 +726,10 @@ void rgb_task_run()
 }
 void rgb_task_shutdown()
 {
-    vTaskSuspend(rgb_run);
+    if (rgb_running == 1)
+    {
+        vTaskSuspend(rgb_run);
+    }
     rgb_running = 0;
 }
 void miotPowerState(const String &state)
@@ -1133,7 +1136,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                 light_now_color_b = b_all / 120;
                 // Move a single white led
                 if (rgb_screen_on == 1)
-                {  
+                {
                     rgb_screen_on = 0;
                     // rgb_running = 1;
                     rgb_task_run();

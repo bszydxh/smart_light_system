@@ -58,7 +58,7 @@ TaskHandle_t sitclock_run;
 ////////////////////////////////////////////////////////////////
 //全局初始化
 WiFiUDP Udp;
-int8_t start_setup = 1;
+int8_t start_setup = 111;
 struct tm timeinfo;      //时间信息
 int retry = 0;           //记录重试次数,全局变量
 const char *ssid = SSID; //定义一个字符串(指针定义法)
@@ -329,8 +329,6 @@ void esp32_Http_2()
     //配置请求地址。此处也可以不使用端口号和PATH而单纯的
     httpClient.begin(URL2);
     httpClient.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
-    Serial.print("URL: ");
-    Serial.println(URL2);
     httpClient.addHeader("charset", "utf-8");
     //启动连接并发送HTTP请求
     int httpCode = httpClient.GET();
@@ -342,11 +340,11 @@ void esp32_Http_2()
     if (httpCode == HTTP_CODE_OK)
     {
         // String responsePayload = httpClient.getString();
-        const String &payload = httpClient.getString();
+        //const String &payload = httpClient.getString();
         Serial.println("Server Response Payload:");
-        Serial.println(payload);
+        //Serial.println(payload);
         DynamicJsonDocument jsonBuffer(2048);
-        deserializeJson(jsonBuffer, payload);
+        deserializeJson(jsonBuffer, httpClient.getStream());
         JsonObject root = jsonBuffer.as<JsonObject>();
         // JsonArray now = root["now"];
         const char *category = root["now"]["category"];
@@ -387,11 +385,11 @@ void esp32_Http()
     if (httpCode == HTTP_CODE_OK)
     {
         // String responsePayload = httpClient.getString();
-        const String &payload = httpClient.getString();
+        //const String &payload = httpClient.getString();
         Serial.println("Server Response Payload:");
-        Serial.println(payload);
+        //Serial.println(payload);
         DynamicJsonDocument jsonBuffer(2048);
-        deserializeJson(jsonBuffer, payload);
+        deserializeJson(jsonBuffer, httpClient.getStream());
         JsonObject root = jsonBuffer.as<JsonObject>();
         // JsonArray now = root["now"];
         const char *text = root["now"]["text"];
@@ -565,6 +563,10 @@ void print_oled() //常驻显示任务,必须循环,否则出事
             esp_restart();
         }
         return;
+    }
+    if (start_setup == 111)
+    {
+        start_setup = 1;
     }
     char str1[60];
     char str2[60];
@@ -989,22 +991,26 @@ void httpTask(void *xTaskHttp) //巨型http请求模块任务
         delay(200);
         if (start_setup == 1)
         {
-            delay(10000);
             esp32_Http();
             esp32_Http_2();
             esp32_Http_hitokoto();
             // esp32_Http_covid();
             start_setup = 0;
         }
-        if (timeinfo.tm_min % 3 == 0 && timeinfo.tm_sec == 0)
+        if (start_setup == 0)
         {
-            esp32_Http();
-            esp32_Http_2();
-        }
-        if (timeinfo.tm_sec == 45)
-        {
-            esp32_Http_hitokoto();
-            // esp32_Http_covid();
+            if (timeinfo.tm_min % 3 == 0 && timeinfo.tm_sec == 0)
+            {
+                esp32_Http();
+            }
+            if (timeinfo.tm_min % 3 == 1 && timeinfo.tm_sec == 0)
+            {
+                esp32_Http_2();
+            }
+            if (timeinfo.tm_min % 3 == 2 && timeinfo.tm_sec == 0)
+            {
+                esp32_Http_hitokoto();
+            }
         }
     }
 }
@@ -1450,7 +1456,7 @@ void loop()
 {
     // Blinker.run(); //wifi blinker自动处理 不用管
     // light();
-    // Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
-    // Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
+    Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
+    Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
     delay(500); //踢看门狗,loop本质上也是freertos中的一个任务
 }

@@ -44,6 +44,7 @@ EEPROM 3000-5120自定义
 #define AUTH_KEY ""
 //定义五行后把下面的include去掉
 #include "password.cpp"
+#include "esp_heap_caps.h"
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义
 #define NUM_LEDS 120
@@ -53,8 +54,15 @@ EEPROM 3000-5120自定义
 static portMUX_TYPE leds_mutex = portMUX_INITIALIZER_UNLOCKED;
 CRGB leds[NUM_LEDS];
 CRGB leds_rgb_mode[NUM_LEDS];
-TaskHandle_t rgb_run;
+TaskHandle_t rgb_run;     
 TaskHandle_t sitclock_run;
+TaskHandle_t oled_run;      
+TaskHandle_t blinker_run;
+TaskHandle_t http_run;     
+TaskHandle_t udp_run;      
+TaskHandle_t rgbChange_run;
+TaskHandle_t button_run;   
+TaskHandle_t fastled_run;    
 ////////////////////////////////////////////////////////////////
 //全局初始化
 WiFiUDP Udp;
@@ -93,34 +101,6 @@ int light_color_g = 206;                           //通信量
 int light_color_b = 235;                           //通信量
 ////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////
-// 蓝牙部分//堆溢出,算了
-// int scanTime = 5; //In seconds
-// int scan_ok = 0;
-// BLEScan *pBLEScan;
-// class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
-// {
-//     void onResult(BLEAdvertisedDevice advertisedDevice)
-//     {
-//         //Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
-//         if (advertisedDevice.getAddress().toString() == "84:ab:26:a9:06:ce")
-//         {
-//             scan_ok = 1;
-//             printf("Advertised Device:%d", advertisedDevice.getRSSI());
-//         }
-//         else
-//         {
-//             scan_ok = 0;
-//             printf("can`t found device");
-//         }
-//     }
-// };
-// void scan()
-// {
-//     BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
-//     Serial.println("Scan done!");
-//     pBLEScan->clearResults(); // delete results fromBLEScan buffer to release memory
-// }
 ////////////////////////////////////////////////////////////////
 // http请求部分,查天气,get
 //
@@ -340,9 +320,9 @@ void esp32_Http_2()
     if (httpCode == HTTP_CODE_OK)
     {
         // String responsePayload = httpClient.getString();
-        //const String &payload = httpClient.getString();
+        // const String &payload = httpClient.getString();
         Serial.println("Server Response Payload:");
-        //Serial.println(payload);
+        // Serial.println(payload);
         DynamicJsonDocument jsonBuffer(2048);
         deserializeJson(jsonBuffer, httpClient.getStream());
         JsonObject root = jsonBuffer.as<JsonObject>();
@@ -385,9 +365,9 @@ void esp32_Http()
     if (httpCode == HTTP_CODE_OK)
     {
         // String responsePayload = httpClient.getString();
-        //const String &payload = httpClient.getString();
+        // const String &payload = httpClient.getString();
         Serial.println("Server Response Payload:");
-        //Serial.println(payload);
+        // Serial.println(payload);
         DynamicJsonDocument jsonBuffer(2048);
         deserializeJson(jsonBuffer, httpClient.getStream());
         JsonObject root = jsonBuffer.as<JsonObject>();
@@ -536,7 +516,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
 }
 void print_oled() //常驻显示任务,必须循环,否则出事
 {
-    if (!getLocalTime(&timeinfo)) //获取时间不成功(一次也没)...允悲
+    if (!(getLocalTime(&timeinfo) && WiFi.status() == WL_CONNECTED)) //获取时间不成功(一次也没)...允悲
     {
         // oled_show("error:404", "pls wait", "retrying...", "");
         Serial.println("error:no connect");
@@ -559,7 +539,7 @@ void print_oled() //常驻显示任务,必须循环,否则出事
         if (retry == 7)
         {
             Serial.println("error:no connect");
-            oled_show("smart_screen", "系统错误", "请等待", "正在重启...");
+            oled_show("smart_screen", "系统错误", "网络寄了", "正在重启...");
             esp_restart();
         }
         return;
@@ -1412,7 +1392,7 @@ void setup()
         if (retry == 15)
         {
             Serial.println("error:no wifi");
-            oled_show("smart_screen", "系统错误", "请等待", "正在重启...");
+            oled_show("smart_screen", "系统错误", "wifi寄了", "正在重启...");
             esp_restart();
         }
     }
@@ -1444,19 +1424,39 @@ void setup()
     light_change = 1;
     pinMode(34, INPUT);
     pinMode(35, INPUT);
-    xTaskCreatePinnedToCore(oledTask, "oledTask", 2048, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(httpTask, "httpTask", 5120, NULL, 0, NULL, 0);
-    xTaskCreatePinnedToCore(udpTask, "udpTask", 5120, NULL, 0, NULL, 0);
-    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 1024, NULL, 3, NULL, 1); //请不要动,动了就寄
-    xTaskCreatePinnedToCore(buttonTask, "buttonTask", 5120, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(fastledTask, "fastledTask", 5120, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(oledTask, "oledTask", 2048, NULL, 1, &oled_run, 0);
+    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, &blinker_run, 0);
+    xTaskCreatePinnedToCore(httpTask, "httpTask", 7168, NULL, 0, &http_run, 0);
+    xTaskCreatePinnedToCore(udpTask, "udpTask", 2048, NULL, 0, &udp_run, 0);
+    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 2048, NULL, 3, &rgbChange_run, 1); //请不要动,动了就寄
+    xTaskCreatePinnedToCore(buttonTask, "buttonTask", 4096, NULL, 2, &button_run, 0);
+    xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 3, &fastled_run, 1);
 }
 void loop()
 {
     // Blinker.run(); //wifi blinker自动处理 不用管
     // light();
-    Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
-    Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
+    //Serial.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
+    //Serial.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
+    // Serial.println("///////////////////////////////////");
+    // Serial.println("rgb");
+    // Serial.println(uxTaskGetStackHighWaterMark(rgb_run));
+    // Serial.println("sit");
+    // Serial.println(uxTaskGetStackHighWaterMark(sitclock_run));
+    // Serial.println("oled");
+    // Serial.println(uxTaskGetStackHighWaterMark(oled_run));
+    // Serial.println("blinker");
+    // Serial.println(uxTaskGetStackHighWaterMark(blinker_run));
+    // Serial.println("http");
+    // Serial.println(uxTaskGetStackHighWaterMark(http_run));
+    // Serial.println("udp");
+    // Serial.println(uxTaskGetStackHighWaterMark(udp_run));
+    // Serial.println("rgbc");
+    // Serial.println(uxTaskGetStackHighWaterMark(rgbChange_run));
+    // Serial.println("button");
+    // Serial.println(uxTaskGetStackHighWaterMark(button_run));
+    // Serial.println("fastled");
+    // Serial.println(uxTaskGetStackHighWaterMark(fastled_run));
+    // Serial.println("/////////////////////////////////////////////");
     delay(500); //踢看门狗,loop本质上也是freertos中的一个任务
 }

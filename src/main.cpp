@@ -61,6 +61,7 @@ EEPROM 3000-5120自定义
 static portMUX_TYPE leds_mutex = portMUX_INITIALIZER_UNLOCKED;
 CRGB leds[NUM_LEDS];
 CRGB leds_rgb_mode[NUM_LEDS];
+CRGB show_leds[NUM_LEDS];
 TaskHandle_t rgb_run;
 TaskHandle_t sitclock_run;
 TaskHandle_t oled_run;
@@ -573,7 +574,7 @@ void print_oled() //常驻显示任务,必须循环,否则出事
         {
             esp_log.println("error:no connect");
             oled_show("smart_screen", "系统错误", "网络寄了", "正在重启...");
-            //esp_restart();
+            // esp_restart();
             hard_restart();
             // ESP.restart();
         }
@@ -1179,6 +1180,14 @@ void fastledTask(void *xTaskfastled)
 {
     while (1)
     {
+        portENTER_CRITICAL(&leds_mutex);
+        for (uint8_t i = 0; i < NUM_LEDS; i++)
+        {
+            show_leds[i].r = leds[i].r;
+            show_leds[i].g = leds[i].g;
+            show_leds[i].b = leds[i].b;
+        }
+        portEXIT_CRITICAL(&leds_mutex);
         FastLED.show();
         delay(10);
     }
@@ -1320,20 +1329,16 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                         light_color_out(r1, g1, b1, light_brightness);
                         esp_log.println("led blink");
                         delay(1000);
-                        int r[3];
-                        int g[3];
-                        int b[3];
-                        r[0] = light_color_r[0];
-                        g[0] = light_color_g[0];
-                        b[0] = light_color_b[0];
-                        r[1] = light_color_r[1];
-                        g[1] = light_color_g[1];
-                        b[1] = light_color_b[1];
-                        r[2] = light_color_r[2];
-                        g[2] = light_color_g[2];
-                        b[2] = light_color_b[2];
+                        int r[3], g[3], b[3];
+                        for (int i = 0; i < 3; i++)
+                        {
+                            r[i] = light_color_r[i];
+                            g[i] = light_color_g[i];
+                            b[i] = light_color_b[i];
+                        }
                         light_color_out(r, g, b, light_brightness);
                         delay(1000);
+                        light_change = 1;
                         esp_log.println("led blink");
                         blink_time--;
                     }
@@ -1391,7 +1396,7 @@ void setup()
     //  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
     //  pBLEScan->setInterval(1000);
     //  pBLEScan->setWindow(99); // less or equal setInterval value
-    FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
+    FastLED.addLeds<WS2812B, DATA_PIN, GRB>(show_leds, NUM_LEDS);
     FastLED.setBrightness(255);
     u8g2.begin();
     u8g2.enableUTF8Print();
@@ -1421,7 +1426,7 @@ void setup()
         {
             esp_log.error_printf("no wifi");
             oled_show("smart_screen", "系统错误", "wifi寄了", "正在重启...");
-            //esp_restart();
+            // esp_restart();
             hard_restart();
         }
     }

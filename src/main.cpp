@@ -15,6 +15,7 @@ EEPROM 3000-5120自定义
 3024 r3
 3028 g3
 3032 b3
+3036 亮度
 */
 /*系统由freertos接管*/
 /*delay()就是vTaskdelay(),不信自己跳转看一下*/
@@ -249,11 +250,13 @@ void EEPROM_rgb_commit()
     EEPROM.writeInt(3024, light_color_r[2]);
     EEPROM.writeInt(3028, light_color_g[2]);
     EEPROM.writeInt(3032, light_color_b[2]);
+    EEPROM.writeInt(3036, light_brightness);
     EEPROM.commit();
     esp_log.printf("eeprom rgb commit success!\n");
     esp_log.printf("rgb1:%d:%d:%d", light_color_r[0], light_color_g[0], light_color_b[0]);
     esp_log.printf("rgb2:%d:%d:%d", light_color_r[1], light_color_g[1], light_color_b[1]);
     esp_log.printf("rgb3:%d:%d:%d", light_color_r[2], light_color_g[2], light_color_b[2]);
+    esp_log.printf("bright:%d",light_brightness);
     EEPROM.end();
 }
 void EEPROM_setup()
@@ -265,7 +268,7 @@ void EEPROM_setup()
         delay(100);
         esp_restart();
     } //自定义从3000开始
-    for (int i = 3000; i <= 3032; i = i + 4)
+    for (int i = 3000; i <= 3036; i = i + 4)
     {
         if (EEPROM.readInt(i) == -1)
         {
@@ -282,9 +285,11 @@ void EEPROM_setup()
     light_color_r[2] = EEPROM.readInt(3024);
     light_color_g[2] = EEPROM.readInt(3028);
     light_color_b[2] = EEPROM.readInt(3032);
+    light_brightness = EEPROM.readInt(3036);
     esp_log.printf("rgb1:%d:%d:%d", light_color_r[0], light_color_g[0], light_color_b[0]);
     esp_log.printf("rgb2:%d:%d:%d", light_color_r[1], light_color_g[1], light_color_b[1]);
     esp_log.printf("rgb3:%d:%d:%d", light_color_r[2], light_color_g[2], light_color_b[2]);
+    esp_log.printf("bright:%d",light_brightness);
     light_now = (light_color_r[0] * 256 + light_color_g[0]) * 256 + light_color_b[0]; //小爱指定的颜色,用于回调,与逻辑耦合的不是那么深,默认天蓝色,具体读eeprom里面的
     // esp_log.printf("p:%d\n", EEPROM.readInt(3000));
 }
@@ -830,6 +835,7 @@ void miotBright(const String &bright)
     mode = 3;
     light_change = 1;
     on_sitclock();
+    EEPROM_rgb_commit();
     BLINKER_LOG("now set brightness: ", light_brightness);
     BlinkerMIOT.brightness(light_brightness);
     BlinkerMIOT.print();
@@ -1386,7 +1392,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
 }
 void setup()
 {
-    Serial.begin(460800);
+    esp_log.setup();
     esp_log.println("bszydxh esp32 start!");
     esp_log.set_log_out_state(0);
     WiFi.mode(WIFI_STA);
@@ -1397,7 +1403,7 @@ void setup()
     //  pBLEScan->setInterval(1000);
     //  pBLEScan->setWindow(99); // less or equal setInterval value
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(show_leds, NUM_LEDS);
-    FastLED.setBrightness(255);
+    FastLED.setBrightness(light_brightness);
     u8g2.begin();
     u8g2.enableUTF8Print();
     WiFi.begin(ssid, password);
@@ -1463,7 +1469,7 @@ void setup()
     light_change = 1;
     pinMode(34, INPUT);
     pinMode(35, INPUT);
-    xTaskCreatePinnedToCore(oledTask, "oledTask", 2048, NULL, 1, &oled_run, 0);
+    xTaskCreatePinnedToCore(oledTask, "oledTask", 3072, NULL, 1, &oled_run, 0);
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, &blinker_run, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 7168, NULL, 0, &http_run, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 4096, NULL, 0, &udp_run, 0);

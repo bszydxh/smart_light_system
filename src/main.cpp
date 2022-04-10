@@ -256,7 +256,7 @@ void EEPROM_rgb_commit()
     esp_log.printf("rgb1:%d:%d:%d", light_color_r[0], light_color_g[0], light_color_b[0]);
     esp_log.printf("rgb2:%d:%d:%d", light_color_r[1], light_color_g[1], light_color_b[1]);
     esp_log.printf("rgb3:%d:%d:%d", light_color_r[2], light_color_g[2], light_color_b[2]);
-    esp_log.printf("bright:%d",light_brightness);
+    esp_log.printf("bright:%d", light_brightness);
     EEPROM.end();
 }
 void EEPROM_setup()
@@ -289,7 +289,7 @@ void EEPROM_setup()
     esp_log.printf("rgb1:%d:%d:%d", light_color_r[0], light_color_g[0], light_color_b[0]);
     esp_log.printf("rgb2:%d:%d:%d", light_color_r[1], light_color_g[1], light_color_b[1]);
     esp_log.printf("rgb3:%d:%d:%d", light_color_r[2], light_color_g[2], light_color_b[2]);
-    esp_log.printf("bright:%d",light_brightness);
+    esp_log.printf("bright:%d", light_brightness);
     light_now = (light_color_r[0] * 256 + light_color_g[0]) * 256 + light_color_b[0]; //小爱指定的颜色,用于回调,与逻辑耦合的不是那么深,默认天蓝色,具体读eeprom里面的
     // esp_log.printf("p:%d\n", EEPROM.readInt(3000));
 }
@@ -554,7 +554,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
 }
 void print_oled() //常驻显示任务,必须循环,否则出事
 {
-    if (!(getLocalTime(&timeinfo) && WiFi.status() == WL_CONNECTED)) //获取时间不成功(一次也没)...允悲
+    if (!(getLocalTime(&timeinfo))) //获取时间不成功(一次也没)...允悲
     {
         delay(1000);
         // oled_show("error:404", "pls wait", "retrying...", "");
@@ -735,6 +735,7 @@ void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
 {
     while (1)
     {
+
         rgb_screen();
     }
 }

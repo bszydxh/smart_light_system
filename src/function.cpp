@@ -23,7 +23,6 @@ public:
 class ESPLog
 {
     int log_out = 1;
-    WiFiUDP udp;
 
 public:
     void setup()
@@ -82,6 +81,7 @@ public:
             }
             return len;
         }
+        return 0;
     }
     void println(const char *format)
     {

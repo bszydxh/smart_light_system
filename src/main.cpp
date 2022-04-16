@@ -1403,7 +1403,7 @@ void setup()
 {
     esp_log.setup();
     esp_log.println("bszydxh esp32 start!");
-    esp_log.set_log_out_state(1);
+    esp_log.set_log_out_state(0);
     WiFi.mode(WIFI_STA);
     // BLEDevice::init("esp32");
     //  pBLEScan = BLEDevice::getScan(); //create new scan

@@ -719,14 +719,22 @@ void rgb_screen()
         leds_rgb_mode[i].g = g;
         leds_rgb_mode[i].b = b;
     }
-    portENTER_CRITICAL(&leds_mutex);
-    for (uint8_t i = 0; i < NUM_LEDS; i++)
+    if (rgb_running == 1)
     {
-        leds[i].r = leds_rgb_mode[i].r;
-        leds[i].g = leds_rgb_mode[i].g;
-        leds[i].b = leds_rgb_mode[i].b;
+        portENTER_CRITICAL(&leds_mutex);
+        for (uint8_t i = 0; i < NUM_LEDS; i++)
+        {
+            leds[i].r = leds_rgb_mode[i].r;
+            leds[i].g = leds_rgb_mode[i].g;
+            leds[i].b = leds_rgb_mode[i].b;
+        }
+        portEXIT_CRITICAL(&leds_mutex);
     }
-    portEXIT_CRITICAL(&leds_mutex);
+    else
+    {
+        delay(1000);
+    }
+
     // Shows new value
     // FastLED.show();
     // sprintf(aqi_final, "sec");
@@ -1395,7 +1403,7 @@ void setup()
 {
     esp_log.setup();
     esp_log.println("bszydxh esp32 start!");
-    esp_log.set_log_out_state(0);
+    esp_log.set_log_out_state(1);
     WiFi.mode(WIFI_STA);
     // BLEDevice::init("esp32");
     //  pBLEScan = BLEDevice::getScan(); //create new scan

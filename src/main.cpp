@@ -18,14 +18,16 @@ esp_EEPROM 0-1024自定义
 36 亮度
 */
 /*系统由freertos接管*/
+/*使用Espressif 32 platfromio 版本为4.3.0
 #define CONFIG_FREERTOS_USE_TRACE_FACILITY
 #define CONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS
 /*delay()就是vTaskdelay(),不信自己跳转看一下*/
 #include <Arduino.h> //主依赖,具体依赖见依赖树
+#define FASTLED_ALL_PINS_HARDWARE_SPI
 #include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
 #include "Wire.h"    //U8g2.h依赖
 #include "U8g2lib.h"
-#include "freertos.h"
+#include "freertos/FreeRTOS.h"
 #include "WiFi.h"             //Blinker.h依赖
 #include "ESPmDNS.h"          //Blinker.h依赖
 #include "FS.h"               //Blinker.h依赖
@@ -124,7 +126,6 @@ LightSet light_set;
 ESPLog esp_log;
 ////////////////////////////////////////////////////////////////
 // http请求部分,查天气,get
-//
 //#define ARDUINOJSON_USE_LONG_LONG 1
 char text_final[30] = "   ";
 char covid_final[30] = " ";
@@ -233,7 +234,7 @@ void on_sitclock() //跟开灯绑定(含类似行为)
 }
 ////////////////////////////////////////////////////////////////
 // eeprom掉电保护部分
-EEPROMClass esp_EEPROM("esp_EEPROM", 1024);
+EEPROMClass esp_EEPROM("esp_EEPROM");
 void EEPROM_rgb_commit()
 {
     if (!esp_EEPROM.begin(1024))
@@ -885,31 +886,10 @@ void miotMode(uint8_t mode_mi)
     else if (mode_mi == BLINKER_CMD_MIOT_COLOR)
     {
         esp_log.task_printf("miot -> MIOT_COLOR");
-        // Your mode function
         rgb_task_shutdown();
         light_on = 1;
         oled_state = 1;
         on_sitclock();
-        portENTER_CRITICAL(&leds_mutex);
-        for (int i = 0; i < 48; i++)
-        {
-            leds[i].r = 255;
-            leds[i].g = 0;
-            leds[i].b = 0;
-        }
-        for (int i = 0; i < 48; i++)
-        {
-            leds[i + 48].r = 0;
-            leds[i + 48].g = 0;
-            leds[i + 48].b = 255;
-        }
-        for (int i = 0; i < 24; i++)
-        {
-            leds[i + 96].r = 255;
-            leds[i + 96].g = 0;
-            leds[i + 96].b = 255;
-        }
-        portEXIT_CRITICAL(&leds_mutex);
         light_color_r[0] = 255; //通信量,上灯带
         light_color_g[0] = 0;   //通信量
         light_color_b[0] = 0;   //通信量
@@ -920,18 +900,23 @@ void miotMode(uint8_t mode_mi)
         light_color_g[2] = 0;   //通信量
         light_color_b[2] = 255; //通信量
         EEPROM_rgb_commit();
-        esp_log.print("mi_color||r:");
-        esp_log.print(light_color_r[0]);
-        esp_log.print("  g:");
-        esp_log.print(light_color_g[0]);
-        esp_log.print("  b:");
-        esp_log.println(light_color_b[0]);
-        light_brightness = 120;
+        //light_brightness = 255;
         mode = 3;
+        light_change = 1;
     }
     else if (mode_mi == BLINKER_CMD_MIOT_WARMTH)
     {
-        // Your mode function
+        esp_log.task_printf("miot -> MIOT_WARMTH(cyberpunk)");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("cyberpunk");                    //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
+        light_on = 1;
+        oled_state = 1;
+        rgb_screen_on = 1;
+        light_change = 1;
+        esp_log.print("Ada\n");
+        on_sitclock();
     }
     else if (mode_mi == BLINKER_CMD_MIOT_TV)
     {
@@ -950,7 +935,6 @@ void miotMode(uint8_t mode_mi)
         oled_state = 0;
         light_on = 0;
         //向udp工具发送消息
-
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
     }
@@ -961,26 +945,27 @@ void miotMode(uint8_t mode_mi)
         light_on = 1;
         oled_state = 1;
         on_sitclock();
-        for (int i = 0; i < 3; i++)
-        {
-            light_color_r[i] = 255;
-            light_color_g[i] = 150;
-            light_color_b[i] = 50;
-        }
+        light_color_r[0] = 255; //通信量,上灯带
+        light_color_g[0] = 255;   //通信量
+        light_color_b[0] = 255;   //通信量
+        light_color_r[1] = 255;   //通信量,下灯带
+        light_color_g[1] = 150;   //通信量
+        light_color_b[1] = 50; //通信量
+        light_color_r[2] = 255; //通信量,侧灯带
+        light_color_g[2] = 150;   //通信量
+        light_color_b[2] = 50; //通信量
         EEPROM_rgb_commit();
-        esp_log.print("mi_color||r:");
-        esp_log.print(light_color_r[0]);
-        esp_log.print("  g:");
-        esp_log.print(light_color_g[0]);
-        esp_log.print("  b:");
-        esp_log.println(light_color_b[0]);
-        light_change = 1;
-        light_brightness = 255;
         mode = 3;
+        light_brightness = 200;
+        light_change = 1;
     }
     else if (mode_mi == BLINKER_CMD_MIOT_COMPUTER)
     {
         esp_log.task_printf("miot -> MIOT_COMPUTER");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("color");                    //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
         light_on = 1;
         oled_state = 1;
         rgb_screen_on = 1;
@@ -1053,6 +1038,7 @@ void blinkerTask(void *xTaskBlinker) // blinker任务
 {
     while (1)
     {
+        esp_log.println("task sign -> blinker");
         Blinker.run();
         delay(100);
     }
@@ -1094,6 +1080,7 @@ void udpTask(void *xTaskUdp)
         int packetSize = Udp.parsePacket(); //获得解析包
         if (packetSize)                     //解析包不为空
         {
+
             //收到Udp数据包
             // Udp.remoteIP().toString().c_str()用于将获取的远端IP地址转化为字符串
             esp_log.printf("收到来自远程IP：%s（远程端口：%d）的数据包字节数：%d\n", Udp.remoteIP().toString().c_str(), Udp.remotePort(), packetSize);
@@ -1279,6 +1266,7 @@ void light_color_out(int *r, int *g, int *b, int bright)
     }
     light_now_brightness = light_brightness;
 }
+
 void rgbChangeTask(void *xTaskRgbChange) //灯条任务
 {
     while (1)
@@ -1429,7 +1417,7 @@ void setup()
     start_setup = 111;
     esp_log.setup();
     esp_log.println("bszydxh esp32 start!");
-    esp_log.set_log_out_state(1);
+    esp_log.set_log_out_state(0);
     WiFi.mode(WIFI_STA);
     // BLEDevice::init("esp32");
     //  pBLEScan = BLEDevice::getScan(); //create new scan
@@ -1441,9 +1429,8 @@ void setup()
     FastLED.setBrightness(light_brightness);
     u8g2.begin();
     u8g2.enableUTF8Print();
-    WiFi.begin(ssid, password);
-    WiFi.setAutoConnect(true);
-    WiFi.setAutoReconnect(true);
+    //WiFi.begin(ssid, password);
+    Blinker.begin(auth, ssid, password);
     oled_show("smart_screen", "---bszydxh", "搜索wifi中...", "初始化灯带...");
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {
@@ -1488,7 +1475,7 @@ void setup()
         esp_log.println("监听失败");
     }
     EEPROM_setup();
-    Blinker.begin(auth, ssid, password);
+    
     Blinker.attachData(dataRead);
     Button1.attach(button1_callback);
     RGB1.attach(rgb1_callback);
@@ -1512,7 +1499,7 @@ void setup()
     xTaskCreatePinnedToCore(udpTask, "udpTask", 4096, NULL, 0, &udp_run, 0);
     xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 3072, NULL, 3, &rgbChange_run, 1); //请不要动,动了就寄
     xTaskCreatePinnedToCore(buttonTask, "buttonTask", 4096, NULL, 2, &button_run, 0);
-    xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 3, &fastled_run, 1);
+    xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 2, &fastled_run, 1);
     //xTaskCreatePinnedToCore(debugTask, "debugTask", 2048, NULL, 4, NULL, 0);
 }
 

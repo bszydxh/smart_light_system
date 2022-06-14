@@ -5,25 +5,28 @@
 25 -> 灯带pwm信号
 */
 /*
-EEPROM 3000-5120自定义
-3000 r1
-3004 g1
-3008 b1
-3012 r2
-3016 g2
-3020 b2
-3024 r3
-3028 g3
-3032 b3
-3036 亮度
+esp_EEPROM 0-1024自定义
+00 r1
+04 g1
+08 b1
+12 r2
+16 g2
+20 b2
+24 r3
+28 g3
+32 b3
+36 亮度
 */
 /*系统由freertos接管*/
+/*使用Espressif 32 platfromio 版本为4.3.0
+#define CONFIG_FREERTOS_USE_TRACE_FACILITY
+#define CONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS
 /*delay()就是vTaskdelay(),不信自己跳转看一下*/
 #include <Arduino.h> //主依赖,具体依赖见依赖树
-#include "SPI.h"     //U8g2.h依赖 Blinker.h依赖
-#include "Wire.h"    //U8g2.h依赖
-#include "U8g2lib.h"
-#include "freertos.h"
+#define FASTLED_ALL_PINS_HARDWARE_SPI//强制规定fastled
+#include "SPI.h"  //U8g2.h依赖 Blinker.h依赖
+#include "Wire.h" //U8g2.h依赖
+#include "freertos/FreeRTOS.h"
 #include "WiFi.h"             //Blinker.h依赖
 #include "ESPmDNS.h"          //Blinker.h依赖
 #include "FS.h"               //Blinker.h依赖
@@ -36,13 +39,14 @@ EEPROM 3000-5120自定义
 // #include <BLEUtils.h>            //蓝牙依赖
 // #include <BLEScan.h>             //蓝牙依赖
 // #include <BLEAdvertisedDevice.h> //蓝牙依赖
-#define BLINKER_PRINT esp_log // Blinker.h依赖
-#define BLINKER_WIFI          // Blinker.h依赖
+#define BLINKER_PRINT Serial // Blinker.h依赖
+#define BLINKER_WIFI         // Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "HTTPClient.h"
 #include "Blinker.h"
 #include "FastLED.h"
 #include "WiFiUdp.h"
+#include "U8g2lib.h"
 #include "esp_task_wdt.h" //下面是和风天气的api,api的key手动再申请罢,一天3000次
 #define URL "https://devapi.qweather.com/v7/weather/now?location=xxx&key=xxx&gzip=n"
 #define URL2 "https://devapi.qweather.com/v7/air/now?location=xxx&key=xxx&gzip=n"
@@ -84,7 +88,8 @@ const char *auth = AUTH_KEY;
 const char *ntpServer = "cn.ntp.org.cn"; //时间服务器
 const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
-U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
+// U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE, /* clock=*/13, /* data=*/14); //定义u8g2
 ////////////////////////////////////////////////////////////////
 // blinker注册
 char b_name[32] = "btn-abc";
@@ -109,6 +114,9 @@ int light_now_brightness = 255;
 int light_color_r[3]; //通信量
 int light_color_g[3]; //通信量
 int light_color_b[3]; //通信量
+int time_hour = 0;
+int time_min = 0;
+int time_all = 0;
 
 void hard_restart()
 {
@@ -117,12 +125,12 @@ void hard_restart()
     while (true)
         ;
 }
+
 ////////////////////////////////////////////////////////////////
 LightSet light_set;
 ESPLog esp_log;
 ////////////////////////////////////////////////////////////////
 // http请求部分,查天气,get
-//
 //#define ARDUINOJSON_USE_LONG_LONG 1
 char text_final[30] = "   ";
 char covid_final[30] = " ";
@@ -153,14 +161,18 @@ void reset_sitclock() //重置看门钟
     {
         target_hour = timeinfo.tm_hour + 1;
         // target_hour = timeinfo.tm_hour;
-    }
+    } //增加一个小时
     target_min = timeinfo.tm_min;
+    time_hour = timeinfo.tm_hour;
+    time_min = timeinfo.tm_min;
+    time_all = 50;
     esp_log.printf("set_clock:%d:%d\n", target_hour, target_min);
 }
 void reset_sitclock_limit()
 {
     target_hour = timeinfo.tm_hour;
     target_min = timeinfo.tm_min + 10;
+    time_all = time_all + 10;
     if (target_min >= 60)
     {
         target_min = target_min - 60;
@@ -203,7 +215,7 @@ void sitclock_task(void *sitclock_task_pointer)
             mode = 4;
             light_change = 1;
             oled_mode = 3;
-            blink_time = 3;
+            blink_time = (time_all - 40) / 10; //动态增加闪灯次数
             reset_sitclock_limit();
         }
         else if (is_sitclock() == 1 && rgb_running == 1)
@@ -213,7 +225,7 @@ void sitclock_task(void *sitclock_task_pointer)
             mode = 5;
             light_change = 1;
             oled_mode = 3;
-            blink_time = 3;
+            blink_time = (time_all - 40) / 10;
             reset_sitclock_limit();
         }
         delay(5000);
@@ -231,67 +243,67 @@ void on_sitclock() //跟开灯绑定(含类似行为)
 }
 ////////////////////////////////////////////////////////////////
 // eeprom掉电保护部分
+EEPROMClass esp_EEPROM("esp_EEPROM");
 void EEPROM_rgb_commit()
 {
-    if (!EEPROM.begin(5120))
+    if (!esp_EEPROM.begin(1024))
     {
         esp_log.println("eeprom fail!");
         oled_show("smart_screen", "eeprom错误", "请等待", "正在重启...");
         delay(100);
-        esp_restart();
+        hard_restart();
     } //自定义从3000开始
-    // esp_log.printf("eeprom rgb commit check!\nrgb:%d:%d:%d\n", EEPROM.readInt(3000), EEPROM.readInt(3004), EEPROM.readInt(3008));
-    EEPROM.writeInt(3000, light_color_r[0]);
-    EEPROM.writeInt(3004, light_color_g[0]);
-    EEPROM.writeInt(3008, light_color_b[0]);
-    EEPROM.writeInt(3012, light_color_r[1]);
-    EEPROM.writeInt(3016, light_color_g[1]);
-    EEPROM.writeInt(3020, light_color_b[1]);
-    EEPROM.writeInt(3024, light_color_r[2]);
-    EEPROM.writeInt(3028, light_color_g[2]);
-    EEPROM.writeInt(3032, light_color_b[2]);
-    EEPROM.writeInt(3036, light_brightness);
-    EEPROM.commit();
+    // esp_log.printf("eeprom rgb commit check!\nrgb:%d:%d:%d\n", esp_EEPROM.readInt(3000), esp_EEPROM.readInt(3004), esp_EEPROM.readInt(3008));
+    esp_EEPROM.put(0, light_color_r[0]);
+    esp_EEPROM.put(4, light_color_g[0]);
+    esp_EEPROM.put(8, light_color_b[0]);
+    esp_EEPROM.put(12, light_color_r[1]);
+    esp_EEPROM.put(16, light_color_g[1]);
+    esp_EEPROM.put(20, light_color_b[1]);
+    esp_EEPROM.put(24, light_color_r[2]);
+    esp_EEPROM.put(28, light_color_g[2]);
+    esp_EEPROM.put(32, light_color_b[2]);
+    esp_EEPROM.put(36, light_brightness);
+    esp_EEPROM.commit();
     esp_log.printf("eeprom rgb commit success!\n");
     esp_log.printf("rgb1:%d:%d:%d", light_color_r[0], light_color_g[0], light_color_b[0]);
     esp_log.printf("rgb2:%d:%d:%d", light_color_r[1], light_color_g[1], light_color_b[1]);
     esp_log.printf("rgb3:%d:%d:%d", light_color_r[2], light_color_g[2], light_color_b[2]);
     esp_log.printf("bright:%d", light_brightness);
-    EEPROM.end();
+    esp_EEPROM.end();
 }
 void EEPROM_setup()
 {
-    if (!EEPROM.begin(5120))
+    if (!esp_EEPROM.begin(1024))
     {
         esp_log.println("eeprom fail!");
         oled_show("smart_screen", "eeprom错误", "请等待", "正在重启...");
         delay(100);
         esp_restart();
     } //自定义从3000开始
-    for (int i = 3000; i <= 3036; i = i + 4)
+    for (int i = 0; i <= 36; i = i + 4)
     {
-        if (EEPROM.readInt(i) == -1)
+        if (esp_EEPROM.readInt(i) == -1)
         {
-            EEPROM.writeInt(i, 255);
+            esp_EEPROM.put(i, 255);
             break;
         }
     }
-    light_color_r[0] = EEPROM.readInt(3000);
-    light_color_g[0] = EEPROM.readInt(3004);
-    light_color_b[0] = EEPROM.readInt(3008);
-    light_color_r[1] = EEPROM.readInt(3012);
-    light_color_g[1] = EEPROM.readInt(3016);
-    light_color_b[1] = EEPROM.readInt(3020);
-    light_color_r[2] = EEPROM.readInt(3024);
-    light_color_g[2] = EEPROM.readInt(3028);
-    light_color_b[2] = EEPROM.readInt(3032);
-    light_brightness = EEPROM.readInt(3036);
+    light_color_r[0] = esp_EEPROM.readInt(0);
+    light_color_g[0] = esp_EEPROM.readInt(4);
+    light_color_b[0] = esp_EEPROM.readInt(8);
+    light_color_r[1] = esp_EEPROM.readInt(12);
+    light_color_g[1] = esp_EEPROM.readInt(16);
+    light_color_b[1] = esp_EEPROM.readInt(20);
+    light_color_r[2] = esp_EEPROM.readInt(24);
+    light_color_g[2] = esp_EEPROM.readInt(28);
+    light_color_b[2] = esp_EEPROM.readInt(32);
+    light_brightness = esp_EEPROM.readInt(36);
     esp_log.printf("rgb1:%d:%d:%d", light_color_r[0], light_color_g[0], light_color_b[0]);
     esp_log.printf("rgb2:%d:%d:%d", light_color_r[1], light_color_g[1], light_color_b[1]);
     esp_log.printf("rgb3:%d:%d:%d", light_color_r[2], light_color_g[2], light_color_b[2]);
     esp_log.printf("bright:%d", light_brightness);
     light_now = (light_color_r[0] * 256 + light_color_g[0]) * 256 + light_color_b[0]; //小爱指定的颜色,用于回调,与逻辑耦合的不是那么深,默认天蓝色,具体读eeprom里面的
-    // esp_log.printf("p:%d\n", EEPROM.readInt(3000));
 }
 ////////////////////////////////////////////////////////////////
 void esp32_Http_covid()
@@ -531,9 +543,13 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
             u8g2.setCursor(0, 13);
             u8g2.print("!!!久坐提醒!!!");
             u8g2.setCursor(0, 30);
-            u8g2.print("!!!起来动动!!!");
+            char str_sit_time[100];
+            char str_sit_start_time[100];
+            sprintf(str_sit_start_time, "于%d时%d分坐下", time_hour, time_min);
+            sprintf(str_sit_time, "您已久坐%d分钟", time_all);
+            u8g2.print(str_sit_start_time);
             u8g2.setCursor(0, 47);
-            u8g2.print("!!!看看远方!!!");
+            u8g2.print(str_sit_time);
             u8g2.setFont(u8g2_font_wqy14_t_gb2312);
             u8g2.setCursor(0, 62);
             u8g2.print(str4);
@@ -579,9 +595,7 @@ void print_oled() //常驻显示任务,必须循环,否则出事
         {
             esp_log.println("error:no connect");
             oled_show("smart_screen", "系统错误", "网络寄了", "正在重启...");
-            // esp_restart();
             hard_restart();
-            // ESP.restart();
         }
         return;
     }
@@ -623,13 +637,6 @@ void print_oled() //常驻显示任务,必须循环,否则出事
     }
 
     oled_show(str1, str2, str3, hitokoto_final);
-    /*if (ok == 0)
-    w{
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
-        ok = 1;
-    }*/
-    // esp_log.println(&timeinfo, "%F %T %A");//日志
 }
 int counter = 0;       //官方计数
 int rgb_screen_on = 0; //逻辑上 rgb_screen ~= light_change 但light>rgb>mode
@@ -743,7 +750,6 @@ void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
 {
     while (1)
     {
-
         rgb_screen();
     }
 }
@@ -762,11 +768,12 @@ void rgb_task_run()
 }
 void rgb_task_shutdown()
 {
+    rgb_running = 0;
     if (rgb_running == 1)
     {
+        delay(100);
         vTaskSuspend(rgb_run);
     }
-    rgb_running = 0;
 }
 void miotPowerState(const String &state)
 {
@@ -892,31 +899,10 @@ void miotMode(uint8_t mode_mi)
     else if (mode_mi == BLINKER_CMD_MIOT_COLOR)
     {
         esp_log.task_printf("miot -> MIOT_COLOR");
-        // Your mode function
         rgb_task_shutdown();
         light_on = 1;
         oled_state = 1;
         on_sitclock();
-        portENTER_CRITICAL(&leds_mutex);
-        for (int i = 0; i < 48; i++)
-        {
-            leds[i].r = 255;
-            leds[i].g = 0;
-            leds[i].b = 0;
-        }
-        for (int i = 0; i < 48; i++)
-        {
-            leds[i + 48].r = 0;
-            leds[i + 48].g = 0;
-            leds[i + 48].b = 255;
-        }
-        for (int i = 0; i < 24; i++)
-        {
-            leds[i + 96].r = 255;
-            leds[i + 96].g = 0;
-            leds[i + 96].b = 255;
-        }
-        portEXIT_CRITICAL(&leds_mutex);
         light_color_r[0] = 255; //通信量,上灯带
         light_color_g[0] = 0;   //通信量
         light_color_b[0] = 0;   //通信量
@@ -927,18 +913,23 @@ void miotMode(uint8_t mode_mi)
         light_color_g[2] = 0;   //通信量
         light_color_b[2] = 255; //通信量
         EEPROM_rgb_commit();
-        esp_log.print("mi_color||r:");
-        esp_log.print(light_color_r[0]);
-        esp_log.print("  g:");
-        esp_log.print(light_color_g[0]);
-        esp_log.print("  b:");
-        esp_log.println(light_color_b[0]);
-        light_brightness = 120;
+        // light_brightness = 255;
         mode = 3;
+        light_change = 1;
     }
     else if (mode_mi == BLINKER_CMD_MIOT_WARMTH)
     {
-        // Your mode function
+        esp_log.task_printf("miot -> MIOT_WARMTH(cyberpunk)");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("cyberpunk");                   //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
+        light_on = 1;
+        oled_state = 1;
+        rgb_screen_on = 1;
+        light_change = 1;
+        esp_log.print("Ada\n");
+        on_sitclock();
     }
     else if (mode_mi == BLINKER_CMD_MIOT_TV)
     {
@@ -957,7 +948,6 @@ void miotMode(uint8_t mode_mi)
         oled_state = 0;
         light_on = 0;
         //向udp工具发送消息
-
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
     }
@@ -968,26 +958,27 @@ void miotMode(uint8_t mode_mi)
         light_on = 1;
         oled_state = 1;
         on_sitclock();
-        for (int i = 0; i < 3; i++)
-        {
-            light_color_r[i] = 255;
-            light_color_g[i] = 150;
-            light_color_b[i] = 50;
-        }
+        light_color_r[0] = 255; //通信量,上灯带
+        light_color_g[0] = 255; //通信量
+        light_color_b[0] = 255; //通信量
+        light_color_r[1] = 255; //通信量,下灯带
+        light_color_g[1] = 150; //通信量
+        light_color_b[1] = 50;  //通信量
+        light_color_r[2] = 255; //通信量,侧灯带
+        light_color_g[2] = 150; //通信量
+        light_color_b[2] = 50;  //通信量
         EEPROM_rgb_commit();
-        esp_log.print("mi_color||r:");
-        esp_log.print(light_color_r[0]);
-        esp_log.print("  g:");
-        esp_log.print(light_color_g[0]);
-        esp_log.print("  b:");
-        esp_log.println(light_color_b[0]);
-        light_change = 1;
-        light_brightness = 255;
         mode = 3;
+        light_brightness = 200;
+        light_change = 1;
     }
     else if (mode_mi == BLINKER_CMD_MIOT_COMPUTER)
     {
         esp_log.task_printf("miot -> MIOT_COMPUTER");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("color");                       //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
         light_on = 1;
         oled_state = 1;
         rgb_screen_on = 1;
@@ -1060,8 +1051,9 @@ void blinkerTask(void *xTaskBlinker) // blinker任务
 {
     while (1)
     {
+        esp_log.println("task sign -> blinker");
         Blinker.run();
-        delay(10);
+        delay(100);
     }
 }
 void httpTask(void *xTaskHttp) //巨型http请求模块任务
@@ -1101,6 +1093,7 @@ void udpTask(void *xTaskUdp)
         int packetSize = Udp.parsePacket(); //获得解析包
         if (packetSize)                     //解析包不为空
         {
+
             //收到Udp数据包
             // Udp.remoteIP().toString().c_str()用于将获取的远端IP地址转化为字符串
             esp_log.printf("收到来自远程IP：%s（远程端口：%d）的数据包字节数：%d\n", Udp.remoteIP().toString().c_str(), Udp.remotePort(), packetSize);
@@ -1207,6 +1200,7 @@ void fastledTask(void *xTaskfastled)
         delay(10);
     }
 }
+
 void light_color_out(int *r, int *g, int *b, int bright)
 {
     CRGB light_change_color[3];
@@ -1285,6 +1279,7 @@ void light_color_out(int *r, int *g, int *b, int bright)
     }
     light_now_brightness = light_brightness;
 }
+
 void rgbChangeTask(void *xTaskRgbChange) //灯条任务
 {
     while (1)
@@ -1337,7 +1332,7 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
                         int r1[3], g1[3], b1[3];
                         for (int i = 0; i < 3; i++)
                         {
-                            r1[i] = 255;
+                            r1[i] = 0;
                             g1[i] = 0;
                             b1[i] = 0;
                         }
@@ -1373,18 +1368,19 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
             {
                 if (blink_time > 0)
                 {
-                    vTaskSuspend(rgb_run);
+                    // vTaskSuspend(rgb_run);
+                    rgb_task_shutdown();
                     portENTER_CRITICAL(&leds_mutex);
                     for (int i = 0; i < 120; i++)
                     {
-                        leds[i].r = 255;
+                        leds[i].r = 0;
                         leds[i].g = 0;
                         leds[i].b = 0;
                     }
                     portEXIT_CRITICAL(&leds_mutex);
                     // FastLED.show();
                     delay(1000);
-                    vTaskResume(rgb_run);
+                    rgb_task_run();
                     delay(1000);
                     esp_log.println("led blink");
                     blink_time--;
@@ -1399,8 +1395,39 @@ void rgbChangeTask(void *xTaskRgbChange) //灯条任务
         delay(100);
     }
 }
+void debugTask(void *xTaskDebug) // debug...
+{
+    while (true)
+    {
+        esp_log.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
+        esp_log.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
+        esp_log.println("///////////////////////////////////");
+        esp_log.print("rgb");
+        esp_log.print(uxTaskGetStackHighWaterMark(rgb_run));
+        esp_log.print("sit");
+        esp_log.print(uxTaskGetStackHighWaterMark(sitclock_run));
+        esp_log.print("oled");
+        esp_log.print(uxTaskGetStackHighWaterMark(oled_run));
+        esp_log.print("blinker");
+        esp_log.print(uxTaskGetStackHighWaterMark(blinker_run));
+        esp_log.print("http");
+        esp_log.print(uxTaskGetStackHighWaterMark(http_run));
+        esp_log.print("udp");
+        esp_log.print(uxTaskGetStackHighWaterMark(udp_run));
+        esp_log.print("rgbc");
+        esp_log.print(uxTaskGetStackHighWaterMark(rgbChange_run));
+        esp_log.print("button");
+        esp_log.print(uxTaskGetStackHighWaterMark(button_run));
+        esp_log.print("fastled");
+        esp_log.println(uxTaskGetStackHighWaterMark(fastled_run));
+        esp_log.println("/////////////////////////////////////////////");
+        delay(1000);
+    }
+}
+
 void setup()
 {
+    start_setup = 111;
     esp_log.setup();
     esp_log.println("bszydxh esp32 start!");
     esp_log.set_log_out_state(0);
@@ -1415,7 +1442,8 @@ void setup()
     FastLED.setBrightness(light_brightness);
     u8g2.begin();
     u8g2.enableUTF8Print();
-    WiFi.begin(ssid, password);
+    // WiFi.begin(ssid, password);
+    Blinker.begin(auth, ssid, password);
     oled_show("smart_screen", "---bszydxh", "搜索wifi中...", "初始化灯带...");
     while (WiFi.status() != WL_CONNECTED) //线程阻断,等待网络连接
     {
@@ -1460,7 +1488,7 @@ void setup()
         esp_log.println("监听失败");
     }
     EEPROM_setup();
-    Blinker.begin(auth, ssid, password);
+
     Blinker.attachData(dataRead);
     Button1.attach(button1_callback);
     RGB1.attach(rgb1_callback);
@@ -1482,35 +1510,13 @@ void setup()
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, &blinker_run, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 7168, NULL, 0, &http_run, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 4096, NULL, 0, &udp_run, 0);
-    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 2048, NULL, 3, &rgbChange_run, 1); //请不要动,动了就寄
+    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 3072, NULL, 3, &rgbChange_run, 1); //请不要动,动了就寄
     xTaskCreatePinnedToCore(buttonTask, "buttonTask", 4096, NULL, 2, &button_run, 0);
-    xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 3, &fastled_run, 1);
+    xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 2, &fastled_run, 1);
+    // xTaskCreatePinnedToCore(debugTask, "debugTask", 2048, NULL, 4, NULL, 0);
 }
+
 void loop()
 {
-    // Blinker.run(); //wifi blinker自动处理 不用管
-    // light();
-    // esp_log.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
-    // esp_log.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
-    // esp_log.println("///////////////////////////////////");
-    // esp_log.println("rgb");
-    // esp_log.println(uxTaskGetStackHighWaterMark(rgb_run));
-    // esp_log.println("sit");
-    // esp_log.println(uxTaskGetStackHighWaterMark(sitclock_run));
-    // esp_log.println("oled");
-    // esp_log.println(uxTaskGetStackHighWaterMark(oled_run));
-    // esp_log.println("blinker");
-    // esp_log.println(uxTaskGetStackHighWaterMark(blinker_run));
-    // esp_log.println("http");
-    // esp_log.println(uxTaskGetStackHighWaterMark(http_run));
-    // esp_log.println("udp");
-    // esp_log.println(uxTaskGetStackHighWaterMark(udp_run));
-    // esp_log.println("rgbc");
-    // esp_log.println(uxTaskGetStackHighWaterMark(rgbChange_run));
-    // esp_log.println("button");
-    // esp_log.println(uxTaskGetStackHighWaterMark(button_run));
-    // esp_log.println("fastled");
-    // esp_log.println(uxTaskGetStackHighWaterMark(fastled_run));
-    // esp_log.println("/////////////////////////////////////////////");
-    delay(500); //踢看门狗,loop本质上也是freertos中的一个任务
+    delay(5000); //踢看门狗,loop本质上也是freertos中的一个任务
 }

@@ -120,7 +120,7 @@ volatile int time_hour = 0;
 volatile int time_min = 0;
 volatile int time_all = 0;
 
-void hard_restart()
+void hard_restart() //硬重启
 {
     esp_task_wdt_init(1, true);
     esp_task_wdt_add(NULL);
@@ -358,7 +358,7 @@ void esp32_Http_covid()
     //关闭与服务器连接
     httpClient3.end();
 }
-void esp32_Http_2()
+void esp32_Http_aqi()
 {
     //创建 HTTPClient 对象
     HTTPClient httpClient;
@@ -401,7 +401,7 @@ void esp32_Http_2()
     //关闭与服务器连接
     httpClient.end();
 }
-void esp32_Http()
+void esp32_Http_weather()
 {
     //创建 HTTPClient 对象
     HTTPClient httpClient;
@@ -490,7 +490,7 @@ void esp32_Http_hitokoto()
     httpClient2.end();
 }
 //显示屏开关
-void oled_show(const char *str1, const char *str2, const char *str3, const char *str4) //提供三行英文输出
+void oled_show(const char *str1, const char *str2, const char *str3, const char *str4) //提供三行英文输出,不保证异步安全
 {
     if (oled_state == 1)
     {
@@ -679,86 +679,75 @@ void dataRead(const String &data)
 
     Blinker.print("millis", BlinkerTime);
 }
-
-uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;
-void rgb_screen()
-{
-    // esp_log.println("rgb_show");
-    //  Wait for first byte of Magic Word
-    //魔法包结构 Ada+校验码+rgb数据
-    for (i = 0; i < sizeof(prefix); ++i) //读到Ada开始
-    {
-    waitLoop:
-        // delay(1); // otherwise, start over
-        while (!Serial.available())
-            ;
-        ;
-        // Check next byte in Magic Word
-        if (prefix[i] == Serial.read())
-            continue;
-        i = 0;
-        goto waitLoop;
-    }
-    // Hi, Lo, Checksum
-    while (!Serial.available())
-        ;
-    hi = Serial.read();
-    while (!Serial.available())
-        ;
-    ;
-    lo = Serial.read();
-    while (!Serial.available())
-        ;
-    ;
-    chk = Serial.read();
-    //检查校验码
-    if (chk != (hi ^ lo ^ 0x55))
-    {
-        i = 0;
-        goto waitLoop;
-    } //线程阻断
-    for (uint8_t i = 0; i < NUM_LEDS; i++)
-    {
-        byte r, g, b;
-        while (!Serial.available())
-            ;
-        r = Serial.read();
-        while (!Serial.available())
-            ;
-        g = Serial.read();
-        while (!Serial.available())
-            ;
-        b = Serial.read();
-        leds_rgb_mode[i].r = r;
-        leds_rgb_mode[i].g = g;
-        leds_rgb_mode[i].b = b;
-    }
-    if (rgb_running == 1)
-    {
-        portENTER_CRITICAL(&leds_mutex);
-        for (uint8_t i = 0; i < NUM_LEDS; i++)
-        {
-            leds[i].r = leds_rgb_mode[i].r;
-            leds[i].g = leds_rgb_mode[i].g;
-            leds[i].b = leds_rgb_mode[i].b;
-        }
-        portEXIT_CRITICAL(&leds_mutex);
-    }
-    else
-    {
-        delay(1000);
-    }
-
-    // Shows new value
-    // FastLED.show();
-    // sprintf(aqi_final, "sec");
-}
-
 void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
 {
+    uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;
     while (1)
     {
-        rgb_screen();
+        //  Wait for first byte of Magic Word
+        //魔法包结构 Ada+校验码+rgb数据
+        for (i = 0; i < sizeof(prefix); ++i) //读到Ada开始
+        {
+        waitLoop:
+            // delay(1); // otherwise, start over
+            while (!Serial.available())
+                ;
+            ;
+            // Check next byte in Magic Word
+            if (prefix[i] == Serial.read())
+                continue;
+            i = 0;
+            goto waitLoop;
+        }
+        // Hi, Lo, Checksum
+        while (!Serial.available())
+            ;
+        hi = Serial.read();
+        while (!Serial.available())
+            ;
+        ;
+        lo = Serial.read();
+        while (!Serial.available())
+            ;
+        ;
+        chk = Serial.read();
+        //检查校验码
+        if (chk != (hi ^ lo ^ 0x55))
+        {
+            i = 0;
+            goto waitLoop;
+        } //线程阻断
+        for (uint8_t i = 0; i < NUM_LEDS; i++)
+        {
+            byte r, g, b;
+            while (!Serial.available())
+                ;
+            r = Serial.read();
+            while (!Serial.available())
+                ;
+            g = Serial.read();
+            while (!Serial.available())
+                ;
+            b = Serial.read();
+            leds_rgb_mode[i].r = r;
+            leds_rgb_mode[i].g = g;
+            leds_rgb_mode[i].b = b;
+        }
+        if (rgb_running == 1)
+        {
+            portENTER_CRITICAL(&leds_mutex);
+            for (uint8_t i = 0; i < NUM_LEDS; i++)
+            {
+                leds[i].r = leds_rgb_mode[i].r;
+                leds[i].g = leds_rgb_mode[i].g;
+                leds[i].b = leds_rgb_mode[i].b;
+            }
+            portEXIT_CRITICAL(&leds_mutex);
+        }
+        else
+        {
+            delay(1000); //留给调度器时间收回串口
+        }
     }
 }
 void rgb_task_run()
@@ -766,7 +755,7 @@ void rgb_task_run()
     rgb_running = 1;
     if (rgb_frist_running == 0)
     {
-        xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, 2, &rgb_run, 1);
+        xTaskCreatePinnedToCore(rgbScreenTask, "Taskrgb", 4096, NULL, 2, &rgb_run, 1); //只有第一次是创建任务
         rgb_frist_running = 1;
     }
     else
@@ -783,6 +772,7 @@ void rgb_task_shutdown()
         vTaskSuspend(rgb_run);
     }
 }
+////////////////////////////////////////////////////////////////
 void miotPowerState(const String &state)
 {
     BLINKER_LOG("need set power state: ", state);
@@ -803,7 +793,6 @@ void miotPowerState(const String &state)
     }
     else if (state == BLINKER_CMD_OFF)
     {
-        // oled_show("", "", "light off");
         light_set.reset();
         rgb_task_shutdown();
         mode = 0;
@@ -874,6 +863,10 @@ void miotMode(uint8_t mode_mi)
     if (mode_mi == BLINKER_CMD_MIOT_DAY)
     {
         esp_log.task_printf("miot -> MIOT_DAY");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("color_off");                   //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
         rgb_task_shutdown();
         light_on = 1;
         oled_state = 1;
@@ -884,6 +877,10 @@ void miotMode(uint8_t mode_mi)
     else if (mode_mi == BLINKER_CMD_MIOT_NIGHT)
     {
         esp_log.task_printf("miot -> MIOT_NIGHT");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("color_off");                   //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
         rgb_task_shutdown();
         light_on = 1;
         oled_state = 1;
@@ -909,6 +906,10 @@ void miotMode(uint8_t mode_mi)
     else if (mode_mi == BLINKER_CMD_MIOT_COLOR)
     {
         esp_log.task_printf("miot -> MIOT_COLOR");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("color_off");                   //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
         rgb_task_shutdown();
         light_on = 1;
         oled_state = 1;
@@ -938,7 +939,12 @@ void miotMode(uint8_t mode_mi)
         oled_state = 1;
         rgb_screen_on = 1;
         light_change = 1;
+        delay(100);
         esp_log.print("Ada\n");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("color");                       //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
         on_sitclock();
     }
     else if (mode_mi == BLINKER_CMD_MIOT_TV)
@@ -964,6 +970,10 @@ void miotMode(uint8_t mode_mi)
     else if (mode_mi == BLINKER_CMD_MIOT_READING)
     {
         esp_log.task_printf("miot -> MIOT_READING");
+        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
+        Udp.print("color_off");                   //把数据写入发送缓冲区
+        Udp.endPacket();                          //发送数据
+        esp_log.println("UDP数据发送成功");
         rgb_task_shutdown();
         light_on = 1;
         oled_state = 1;
@@ -984,16 +994,18 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_COMPUTER)
     {
+
         esp_log.task_printf("miot -> MIOT_COMPUTER");
+        light_on = 1;
+        oled_state = 1;
+        delay(300);
+        rgb_screen_on = 1;
+        light_change = 1;
+        esp_log.print("Ada\n");
         Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
         Udp.print("color");                       //把数据写入发送缓冲区
         Udp.endPacket();                          //发送数据
         esp_log.println("UDP数据发送成功");
-        light_on = 1;
-        oled_state = 1;
-        rgb_screen_on = 1;
-        light_change = 1;
-        esp_log.print("Ada\n");
         on_sitclock();
     }
 }
@@ -1051,7 +1063,6 @@ void oledTask(void *xTaskOled) //显示屏任务
 {
     while (1)
     {
-        //esp_log.info_printf("oledTask");
         print_oled();
         delay(300);
     }
@@ -1060,7 +1071,7 @@ void blinkerTask(void *xTaskBlinker) // blinker任务
 {
     while (1)
     {
-        //esp_log.printf("blinkerTask\n");
+        // esp_log.printf("blinkerTask\n");
         Blinker.run();
         delay(100);
     }
@@ -1072,9 +1083,9 @@ void httpTask(void *xTaskHttp) //巨型http请求模块任务
         delay(200);
         if (start_setup == 1)
         {
-            esp32_Http();
-            esp32_Http_2();
-            esp32_Http_hitokoto();
+            esp32_Http_weather();
+            esp32_Http_aqi();
+            esp32_Http_hitokoto(); //获取一言
             // esp32_Http_covid();
             start_setup = 0;
         }
@@ -1082,11 +1093,11 @@ void httpTask(void *xTaskHttp) //巨型http请求模块任务
         {
             if (timeinfo.tm_min % 3 == 0 && timeinfo.tm_sec == 0)
             {
-                esp32_Http();
+                esp32_Http_weather();
             }
             if (timeinfo.tm_min % 3 == 1 && timeinfo.tm_sec == 0)
             {
-                esp32_Http_2();
+                esp32_Http_aqi();
             }
             if (timeinfo.tm_min % 3 == 2 && timeinfo.tm_sec == 0)
             {
@@ -1140,6 +1151,8 @@ void buttonTask(void *xTaskButton)
     int button2_now = 0;
     int button1_before = 0;
     int button2_before = 0;
+    pinMode(button2_pin, INPUT);
+    pinMode(button1_pin, INPUT);
     while (1)
     {
         // esp_log.printf("pin1:%d;", digitalRead(button1_pin));
@@ -1192,7 +1205,6 @@ void buttonTask(void *xTaskButton)
         delay(10);
     }
 }
-// use
 void fastledTask(void *xTaskfastled)
 {
     CRGB show_leds[NUM_LEDS];
@@ -1200,19 +1212,34 @@ void fastledTask(void *xTaskfastled)
     FastLED.setBrightness(light_brightness);
     while (1)
     {
+        int flag = 0;
         portENTER_CRITICAL(&leds_mutex);
         for (uint8_t i = 0; i < NUM_LEDS; i++)
         {
-            show_leds[i].r = leds[i].r;
-            show_leds[i].g = leds[i].g;
-            show_leds[i].b = leds[i].b;
+            if (show_leds[i].r != leds[i].r)
+            {
+                show_leds[i].r = leds[i].r;
+                flag = 1;
+            }
+            if (show_leds[i].g != leds[i].g)
+            {
+                show_leds[i].g = leds[i].g;
+                flag = 1;
+            }
+            if (show_leds[i].b != leds[i].b)
+            {
+                show_leds[i].b = leds[i].b;
+                flag = 1;
+            }
         }
         portEXIT_CRITICAL(&leds_mutex);
-        FastLED.show();
+        if (flag == 1)
+        {
+            FastLED.show();
+        }
         delay(10);
     }
 }
-
 void light_color_out(int *r, int *g, int *b, int bright)
 {
     CRGB light_change_color[3];
@@ -1252,8 +1279,8 @@ void light_color_out(int *r, int *g, int *b, int bright)
         light_now[i].r = r_all[i] / 48;
         light_now[i].g = g_all[i] / 48;
         light_now[i].b = b_all[i] / 48;
+        esp_log.printf("%d:%d:%d\n", light_now[i].r, light_now[i].g, light_now[i].b);
     }
-    esp_log.printf("%d:%d:%d\n", light_now[i].r, light_now[i].g, light_now[i].b);
     for (int8_t n = 1; n <= 24; n++)
     {
         for (int i = 0; i < 3; i++)
@@ -1291,7 +1318,6 @@ void light_color_out(int *r, int *g, int *b, int bright)
     }
     light_now_brightness = light_brightness;
 }
-
 void rgbChangeTask(void *xTaskRgbChange) //灯条任务
 {
     while (1)
@@ -1436,20 +1462,12 @@ void debugTask(void *xTaskDebug) // debug...
         delay(1000);
     }
 }
-
 void setup()
 {
     start_setup = 111;
     esp_log.setup();
     esp_log.println("bszydxh esp32 start!");
     WiFi.mode(WIFI_STA);
-    // BLEDevice::init("esp32");
-    //  pBLEScan = BLEDevice::getScan(); //create new scan
-    //  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-    //  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
-    //  pBLEScan->setInterval(1000);
-    //  pBLEScan->setWindow(99); // less or equal setInterval value
-
     u8g2.begin();
     u8g2.enableUTF8Print();
     // WiFi.begin(ssid, password);
@@ -1519,8 +1537,6 @@ void setup()
     BlinkerMIOT.attachQuery(miotQuery);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     light_change = 1;
-    pinMode(34, INPUT);
-    pinMode(35, INPUT);
     xTaskCreatePinnedToCore(oledTask, "oledTask", 3072, NULL, 1, &oled_run, 0);
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, &blinker_run, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 7168, NULL, 0, &http_run, 0);
@@ -1530,7 +1546,6 @@ void setup()
     xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 2, &fastled_run, 1);
     // xTaskCreatePinnedToCore(debugTask, "debugTask", 2048, NULL, 4, NULL, 0);
 }
-
 void loop()
 {
     delay(5000); //踢看门狗,loop本质上也是freertos中的一个任务

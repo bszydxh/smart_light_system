@@ -57,7 +57,7 @@ esp_EEPROM 0-1024自定义
 #include "function.cpp"
 #include "password.cpp"
 #include "esp_heap_caps.h"
-#define DEBUG                    //调试模式
+#define DEBUG                   //调试模式
 #define ESPLOG_LEVEL ESPLOG_TASK //调试等级
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义
@@ -66,9 +66,9 @@ esp_EEPROM 0-1024自定义
 #define USE_MULTCORE 1
 //临界互斥锁,保护leds资源
 static portMUX_TYPE leds_mutex = portMUX_INITIALIZER_UNLOCKED;
-volatile CRGB leds[NUM_LEDS];
-volatile CRGB leds_rgb_mode[NUM_LEDS];
-
+volatile CRGB leds[NUM_LEDS];            //实时量
+volatile CRGB leds_rgb_mode[NUM_LEDS];   //实时量
+volatile int brightness_with_leds = 255; //实时量
 TaskHandle_t rgb_run;
 TaskHandle_t sitclock_run;
 TaskHandle_t oled_run;
@@ -1207,12 +1207,13 @@ void buttonTask(void *xTaskButton)
 }
 void fastledTask(void *xTaskfastled)
 {
-    CRGB show_leds[NUM_LEDS];
+    CRGB show_leds[NUM_LEDS]; //中间量
+    int show_brightness = 255;
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(show_leds, NUM_LEDS);
-    FastLED.setBrightness(light_brightness);
     while (1)
     {
         int flag = 0;
+
         portENTER_CRITICAL(&leds_mutex);
         for (uint8_t i = 0; i < NUM_LEDS; i++)
         {
@@ -1231,10 +1232,16 @@ void fastledTask(void *xTaskfastled)
                 show_leds[i].b = leds[i].b;
                 flag = 1;
             }
+            if (show_brightness != light_brightness)
+            {
+                show_brightness = brightness_with_leds;
+                flag = 1;
+            }
         }
         portEXIT_CRITICAL(&leds_mutex);
         if (flag == 1)
         {
+            FastLED.setBrightness(show_brightness);
             FastLED.show();
         }
         delay(10);
@@ -1243,7 +1250,7 @@ void fastledTask(void *xTaskfastled)
 void light_color_out(int *r, int *g, int *b, int bright)
 {
     CRGB light_change_color[3];
-    int light_change_brightness = 0;
+    int light_change_brightness = 0; //中间变量
     CRGB light_now[3];
     int r_all[3];
     int g_all[3];
@@ -1311,10 +1318,10 @@ void light_color_out(int *r, int *g, int *b, int bright)
             leds[96 + i].b = light_change_color[2].b;
         }
         light_change = 0;
+        brightness_with_leds = light_change_brightness;
         portEXIT_CRITICAL(&leds_mutex);
-        FastLED.setBrightness(light_change_brightness);
-        esp_log.println("rgb change");
-        delay(5);
+        esp_log.info_printf("Light change");
+        delay(10);
     }
     light_now_brightness = light_brightness;
 }

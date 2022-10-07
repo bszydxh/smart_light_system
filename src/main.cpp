@@ -3,6 +3,8 @@
 13 -> 显示屏时钟信号(scl)
 14 -> 显示屏数据信号(sda)
 25 -> 灯带pwm信号
+34 -> 按钮二
+35 -> 按钮一
 */
 /*
 esp_EEPROM 0-1024自定义
@@ -22,6 +24,7 @@ esp_EEPROM 0-1024自定义
 #define CONFIG_FREERTOS_USE_TRACE_FACILITY
 #define CONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS
 /*delay()就是vTaskdelay(),不信自己跳转看一下*/
+// todo 利用对列对信号进行消费
 #include <Arduino.h>                  //主依赖,具体依赖见依赖树
 #define FASTLED_ALL_PINS_HARDWARE_SPI //强制规定fastled
 #include "SPI.h"                      //U8g2.h依赖 Blinker.h依赖
@@ -78,6 +81,7 @@ TaskHandle_t udp_run;
 TaskHandle_t rgbChange_run;
 TaskHandle_t button_run;
 TaskHandle_t fastled_run;
+TaskHandle_t bleKeyboard_run;
 ////////////////////////////////////////////////////////////////
 //全局初始化
 WiFiUDP Udp;
@@ -90,8 +94,14 @@ const char *auth = AUTH_KEY;
 const char *ntpServer = "cn.ntp.org.cn"; //时间服务器
 const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
-// U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/13, /* data=*/14, /* reset=*/U8X8_PIN_NONE); //定义u8g2
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE, /* clock=*/13, /* data=*/14); //定义u8g2
+// class U8G2_SSD1306_128X32_NONAME_F_HW_I2C : public U8G2 {
+//   public: U8G2_SSD1306_128X32_NONAME_F_HW_I2C(const u8g2_cb_t *rotation, uint8_t reset = U8X8_PIN_NONE, uint8_t clock = U8X8_PIN_NONE, uint8_t data = U8X8_PIN_NONE) : U8G2() {
+//     u8g2_Setup_ssd1306_i2c_128x32_univision_f(&u8g2, rotation, u8x8_byte_arduino_hw_i2c, u8x8_gpio_and_delay_arduino);
+//     u8x8_SetPin_HW_I2C(getU8x8(), reset, clock, data);
+//   }
+// };
+// U8G2_SSD1306_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE, /* clock=*/13, /* data=*/14); //定义u8g2
 ////////////////////////////////////////////////////////////////
 // blinker注册
 char b_name[32] = "btn-abc";
@@ -116,9 +126,9 @@ volatile int light_now_brightness = 255;
 volatile int light_color_r[3]; //通信量
 volatile int light_color_g[3]; //通信量
 volatile int light_color_b[3]; //通信量
-volatile int time_hour = 0;
-volatile int time_min = 0;
-volatile int time_all = 0;
+volatile int time_hour = 0;    //通信量
+volatile int time_min = 0;     //通信量
+volatile int time_all = 0;     //通信量
 
 void hard_restart() //硬重启
 {
@@ -750,6 +760,7 @@ void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
         }
     }
 }
+
 void rgb_task_run()
 {
     rgb_running = 1;
@@ -1210,6 +1221,7 @@ void fastledTask(void *xTaskfastled)
     CRGB show_leds[NUM_LEDS]; //中间量
     int show_brightness = 255;
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(show_leds, NUM_LEDS);
+    TickType_t xLastWakeTime = xTaskGetTickCount();
     while (1)
     {
         int flag = 0;
@@ -1244,7 +1256,7 @@ void fastledTask(void *xTaskfastled)
             FastLED.setBrightness(show_brightness);
             FastLED.show();
         }
-        delay(10);
+        vTaskDelayUntil(&xLastWakeTime, 10);
     }
 }
 void light_color_out(int *r, int *g, int *b, int bright)
@@ -1321,10 +1333,11 @@ void light_color_out(int *r, int *g, int *b, int bright)
         brightness_with_leds = light_change_brightness;
         portEXIT_CRITICAL(&leds_mutex);
         esp_log.info_printf("Light change");
-        delay(10);
+        delay(5);
     }
     light_now_brightness = light_brightness;
 }
+
 void rgbChangeTask(void *xTaskRgbChange) //灯条任务
 {
     while (1)
@@ -1477,6 +1490,7 @@ void setup()
     WiFi.mode(WIFI_STA);
     u8g2.begin();
     u8g2.enableUTF8Print();
+    esp_log.println("bszydxh blekey start!");
     // WiFi.begin(ssid, password);
     Blinker.begin(auth, ssid, password);
     oled_show("smart_screen", "---bszydxh", "搜索wifi中...", "初始化灯带...");

@@ -26,6 +26,7 @@ public:
         return light_set_num;
     }
 };
+
 class ESPLog
 {
     int log_level = 0;
@@ -33,7 +34,7 @@ class ESPLog
 public:
     void setup()
     {
-        Serial.begin(460800);
+        Serial.begin(256000);
         delay(500);
         // udp.begin(7777);
     }

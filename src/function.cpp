@@ -1,4 +1,10 @@
 #include "arduino.h"
+#define ESPLOG_ALL 5
+#define ESPLOG_INFO 4
+#define ESPLOG_TASK 3
+#define ESPLOG_WARN 2
+#define ESPLOG_ERROR 1
+#define ESPLOG_OFF 0
 class LightSet
 {
     int light_set_num = 0; //通信量
@@ -20,109 +26,111 @@ public:
         return light_set_num;
     }
 };
+
 class ESPLog
 {
-    int log_out = 1;
+    int log_level = 0;
 
 public:
     void setup()
     {
-        Serial.begin(460800);
+        Serial.begin(256000);
         delay(500);
-        //udp.begin(7777);
+        // udp.begin(7777);
     }
-    int get_log_out_state()
+    void set_log_out_level(int n) //默认为warning
     {
-        return log_out;
-    }
-    void set_log_out_state(int n)
-    {
-        if (n >= 0 && n <= 1)
+        if (n == ESPLOG_ALL)
         {
-            log_out = n;
+            log_level = ESPLOG_ALL;
         }
-        else
+        else if (n == ESPLOG_INFO)
         {
-            log_out = 1;
+            log_level = ESPLOG_INFO;
         }
-    }
-    int printf(const char *format, ...)
-    {
-        if (log_out != 0)
+        else if (n == ESPLOG_TASK)
         {
-            char loc_buf[64];
-            char *temp = loc_buf;
-            va_list arg;
-            va_list copy;
-            va_start(arg, format);
-            va_copy(copy, arg);
-            int len = vsnprintf(temp, sizeof(loc_buf), format, copy);
-            va_end(copy);
-            if (len < 0)
-            {
-                va_end(arg);
-                return 0;
-            };
-            if (len >= sizeof(loc_buf))
-            {
-                temp = (char *)malloc(len + 1);
-                if (temp == NULL)
-                {
-                    va_end(arg);
-                    return 0;
-                }
-                len = vsnprintf(temp, len + 1, format, arg);
-            }
-            va_end(arg);
-            len = Serial.write((uint8_t *)temp, len);
-            if (temp != loc_buf)
-            {
-                free(temp);
-            }
-            return len;
+            log_level = ESPLOG_TASK;
         }
-        return 0;
+        else if (n == ESPLOG_WARN)
+        {
+            log_level = ESPLOG_WARN;
+        }
+        else if (n == ESPLOG_ERROR)
+        {
+            log_level = ESPLOG_ERROR;
+        }
+        else if (n == ESPLOG_OFF)
+        {
+            log_level = ESPLOG_OFF;
+        }
     }
-    void println(const char *format)
+    template <typename... T>
+    void printf(T... arg)
     {
-        if (log_out != 0)
-            Serial.println(format);
+        if (log_level >= ESPLOG_ALL)
+        {
+            Serial.printf(arg...);
+        }
     }
-    void println(int value)
+    template <typename T>
+    void println(T arg)
     {
-        if (log_out != 0)
-            Serial.println(value);
+        if (log_level >= ESPLOG_ALL)
+        {
+            Serial.println(arg);
+        }
     }
-    void println(const String &s)
+    template <typename T>
+    void print(T arg)
     {
-        if (log_out != 0)
-            Serial.println(s);
+        if (log_level >= ESPLOG_ALL)
+        {
+            Serial.print(arg);
+        }
     }
-    void println(void)
+    template <typename... T>
+    void error_printf(T... arg)
     {
-        if (log_out != 0)
-            Serial.println();
+        if (log_level >= ESPLOG_ERROR)
+        {
+            Serial.printf("[%ld]", millis());
+            Serial.printf("[error]");
+            Serial.printf(arg...);
+            Serial.printf("\n");
+        }
     }
-    void print(const char *format)
+    template <typename... T>
+    void task_printf(T... arg)
     {
-        if (log_out != 0)
-            Serial.print(format);
+        if (log_level >= ESPLOG_TASK)
+        {
+            Serial.printf("[%ld]", millis());
+            Serial.printf("[task]");
+            Serial.printf(arg...);
+            Serial.printf("\n");
+        }
     }
-    void print(int value)
+    template <typename... T>
+    void info_printf(T... arg)
     {
-        if (log_out != 0)
-            Serial.print(value);
+        if (log_level >= ESPLOG_INFO)
+        {
+            Serial.printf("[%ld]", millis());
+            Serial.printf("[info]");
+            Serial.printf(arg...);
+            Serial.printf("\n");
+        }
     }
-    void error_printf(const char *format, ...)
+    template <typename... T>
+    void warning_printf(T... arg)
     {
-        Serial.println(format);
-        Serial.printf("[%ld]", millis());
-        Serial.printf("[error]");
-    }
-    void task_printf(const char *format, ...)
-    {
-        Serial.printf("[%ld]", millis());
-        Serial.printf("[task]");
-        Serial.println(format);
+        if (log_level >= ESPLOG_WARN)
+        {
+            Serial.printf("[%ld]", millis());
+            Serial.printf("[warning]");
+            Serial.printf(arg...);
+            Serial.printf("\n");
+        }
     }
 };

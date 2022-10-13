@@ -31,7 +31,7 @@ vscode platfromio平台开发
 
 使用freertos进行任务调度
 
-udp进行局域网下响应
+udp进行局域网下广播收发包
 
 1145端口进行接收(turn_on/turn_off)
 
@@ -40,6 +40,10 @@ udp进行局域网下响应
 使用时注意查看esp32平台库版本是否与main.cpp的一致
 
 手动关闭Blinker库，可实现去mqtt化运行
+
+c#电脑端控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/udp_turn_off),作为系统的比较重要的扩展，需要自行打包
+
+感谢c#程序来源[tty228/udp_turn_off](https://github.com/tty228/udp_turn_off)
 
 欢迎提issue
 
@@ -78,7 +82,7 @@ udp进行局域网下响应
 2. 流光溢彩/音效律动效果(电脑端下载Prismatik软件,选择adalight,波特率460800)
 3. 显示屏(一言/天气/时钟)
 4. 久坐提醒(闪烁)
-5. 关电脑,c#程序来源<https://github.com/tty228/udp_turn_off>
+5. 与电脑智能联动
 6. 触摸按键两个，用于开关灯/切换模式
 
 ## 注意事项 

@@ -56,12 +56,16 @@ esp_EEPROM 0-1024自定义
 #define SSID ""
 #define PASSWORD ""
 #define AUTH_KEY ""
+#define COMPUTER_PORT 8082
+#define ANDROID_PORT 8081
+#define ESP32_OLED_PORT 1145
+#define ESP32_KEYBOARD_PORT 8484
 //定义五行后把下面 #include "password.cpp" 去掉
 #include "function.cpp"
 #include "password.cpp"
 #include "esp_heap_caps.h"
 #define DEBUG                   //调试模式
-#define ESPLOG_LEVEL ESPLOG_TASK //调试等级
+#define ESPLOG_LEVEL ESPLOG_ALL //调试等级
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义
 #define NUM_LEDS 120
@@ -85,13 +89,18 @@ TaskHandle_t bleKeyboard_run;
 ////////////////////////////////////////////////////////////////
 //全局初始化
 WiFiUDP Udp;
-int8_t start_setup = 111;
+#define NOT_SETUP 111
+int8_t start_setup = NOT_SETUP;
 struct tm timeinfo;      //时间信息
 int retry = 0;           //记录重试次数,全局变量
 const char *ssid = SSID; //定义一个字符串(指针定义法)
 const char *password = PASSWORD;
 const char *auth = AUTH_KEY;
-const char *ntpServer = "cn.ntp.org.cn"; //时间服务器
+
+const char *ntpServer1 = "ntp.ntsc.ac.cn"; //时间服务器
+const char *ntpServer2 = "cn.ntp.org.cn";  //时间服务器
+const char *ntpServer3 = "ntp.aliyun.com"; //时间服务器
+
 const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE, /* clock=*/13, /* data=*/14); //定义u8g2
@@ -372,7 +381,6 @@ void esp32_Http_aqi()
 {
     //创建 HTTPClient 对象
     HTTPClient httpClient;
-
     //配置请求地址。此处也可以不使用端口号和PATH而单纯的
     httpClient.begin(URL2);
     httpClient.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
@@ -506,15 +514,8 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
     {
         if (oled_mode == 1)
         {
-            // char str_sum[100];//不需要日志注释掉
-            // char *str = &str_sum[0];//不需要日志注释掉
             u8g2.clearBuffer();
-            // u8g2.setFont(u8g2_font_ncenB12_tr);
             u8g2.setFont(u8g2_font_wqy16_t_gb2312);
-            // u8g2.drawStr(0, 12, str1);
-            // u8g2.drawStr(0, 27, str2);
-            // u8g2.drawStr(0, 42, str3);
-            //  u8g2.drawStr(0, 57, str4);
             u8g2.setCursor(0, 13);
             u8g2.print(str1);
             u8g2.setCursor(0, 30);
@@ -524,15 +525,11 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
             u8g2.setFont(u8g2_font_wqy14_t_gb2312);
             u8g2.setCursor(0, 62);
             u8g2.print(str4);
-            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-            // esp_log.println(str);//不需要日志注释掉
             esp_log.info_printf("oled_showing:%s%s%s%s", str1, str2, str3, str4);
             u8g2.sendBuffer();
         }
         else if (oled_mode == 2)
         {
-            // char str_sum[100];//不需要日志注释掉
-            // char *str = &str_sum[0];//不需要日志注释掉
             u8g2.clearBuffer();
             u8g2.setFont(u8g2_font_wqy16_t_gb2312);
             u8g2.setCursor(0, 13);
@@ -544,8 +541,6 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
             u8g2.setFont(u8g2_font_wqy14_t_gb2312);
             u8g2.setCursor(0, 62);
             u8g2.print(str4);
-            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-            // esp_log.println(str);//不需要日志注释掉
             esp_log.println("oled_change");
             u8g2.sendBuffer();
             delay(700);
@@ -570,8 +565,6 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
             u8g2.setFont(u8g2_font_wqy14_t_gb2312);
             u8g2.setCursor(0, 62);
             u8g2.print(str4);
-            // sprintf(str, "oled_showing:\n%s\n%s\n%s\n", str1, str2, str3);//不需要日志注释掉
-            // esp_log.println(str);//不需要日志注释掉
             esp_log.println("oled_change");
             u8g2.sendBuffer();
             delay(10000);
@@ -582,7 +575,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
     {
         u8g2.clearBuffer();
         u8g2.sendBuffer();
-        esp_log.println("oled_off");
+        esp_log.info_printf("oled_off");
     }
 }
 void print_oled() //用户界面,必须循环,否则出事
@@ -606,7 +599,7 @@ void print_oled() //用户界面,必须循环,否则出事
         {
             oled_show("smart_screen", "---bszydxh", "无网络...", retry_str);
         }
-        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
         retry++;
         if (retry == 7)
         {
@@ -616,34 +609,34 @@ void print_oled() //用户界面,必须循环,否则出事
         }
         return;
     }
-    if (start_setup == 111)
+    if (start_setup == NOT_SETUP)
     {
         start_setup = 1;
     }
     char str1[60];
     char str2[60];
     char str3[60];
-    char st[60];
-    char strrr[60];
-    strftime(st, 100, "%a", &timeinfo);
-    sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, st); //整合字符串
-    strftime(strrr, 100, "%H:%M:%S", &timeinfo);
+    char str_timeinfo[60];
+    char str_clockinfo[60];
+    strftime(str_timeinfo, 100, "%a", &timeinfo);
+    sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, str_timeinfo); //整合字符串
+    strftime(str_clockinfo, 100, "%H:%M:%S", &timeinfo);
     if (rgb_running == 0)
     {
         if (WiFi.status() == WL_CONNECTED)
         {
-            sprintf(str2, "%s 在线", strrr);
+            sprintf(str2, "%s 在线", str_clockinfo);
         }
         else
         {
-            sprintf(str2, "%s 离线", strrr);
+            sprintf(str2, "%s 离线", str_clockinfo);
         }
     }
     else
     {
-        sprintf(str2, "%s USB", strrr);
+        sprintf(str2, "%s USB", str_clockinfo);
     }
-    // sprintf(str2, "%s %s", strrr, text_final);
+    // sprintf(str2, "%s %s", str_clockinfo, text_final);
     if (timeinfo.tm_sec % 10 >= 5)
     {
         sprintf(str3, "%s|%s℃ %s", text_final, temp_final, aqi_final);
@@ -796,9 +789,7 @@ void miotPowerState(const String &state)
         esp_log.task_printf("miot -> light on");
         mode = 1; //默认日光
         on_sitclock();
-        delay(150);
         light_change = 1;
-        // oled_show("", "", "light on");
         BlinkerMIOT.powerState("on");
         BlinkerMIOT.print();
     }
@@ -808,12 +799,10 @@ void miotPowerState(const String &state)
         rgb_task_shutdown();
         mode = 0;
         esp_log.task_printf("miot -> light off");
-        delay(150);
         light_change = 1;
         oled_state = 0;
         light_on = 0;
         off_sitclock();
-
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
     }
@@ -870,13 +859,13 @@ void miotMode(uint8_t mode_mi)
     BLINKER_LOG("need set mode: ", mode_mi);
     BlinkerMIOT.mode(mode_mi);
     BlinkerMIOT.print();
-    mi_mode = mode_mi;
+    mi_mode = mode_mi; //用于回调的模式
     if (mode_mi == BLINKER_CMD_MIOT_DAY)
     {
         esp_log.task_printf("miot -> MIOT_DAY");
-        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
-        Udp.print("color_off");                   //把数据写入发送缓冲区
-        Udp.endPacket();                          //发送数据
+        Udp.beginPacket("255.255.255.255", COMPUTER_PORT); //配置远端ip地址和端口
+        Udp.print("color_off");                            //把数据写入发送缓冲区
+        Udp.endPacket();                                   //发送数据
         esp_log.println("UDP数据发送成功");
         rgb_task_shutdown();
         light_on = 1;
@@ -887,39 +876,19 @@ void miotMode(uint8_t mode_mi)
     }
     else if (mode_mi == BLINKER_CMD_MIOT_NIGHT)
     {
-        esp_log.task_printf("miot -> MIOT_NIGHT");
-        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
-        Udp.print("color_off");                   //把数据写入发送缓冲区
-        Udp.endPacket();                          //发送数据
-        esp_log.println("UDP数据发送成功");
-        rgb_task_shutdown();
-        light_on = 1;
-        oled_state = 1;
-        on_sitclock();
-        for (int i = 0; i < 3; i++)
-        {
-            light_color_r[i] = 0;
-            light_color_g[i] = 0;
-            light_color_b[i] = 255;
-        }
-
-        EEPROM_rgb_commit();
-        esp_log.printf("mi_color||r:");
-        esp_log.print(light_color_r[0]);
-        esp_log.printf("  g:");
-        esp_log.print(light_color_g[0]);
-        esp_log.printf("  b:");
-        esp_log.println(light_color_b[0]);
-        light_brightness = 120;
-        light_change = 1;
-        mode = 3;
+        esp_log.task_printf("miot -> MIOT_NIGHT(回来了)");
+        Udp.beginPacket("255.255.255.255", ESP32_KEYBOARD_PORT); //配置远端ip地址和端口
+        Udp.print("74245886off");                                //把数据写入发送缓冲区
+        Udp.endPacket();                                         //发送数据
+        miotPowerState("on");
+        mi_mode = BLINKER_CMD_MIOT_DAY;
     }
     else if (mode_mi == BLINKER_CMD_MIOT_COLOR)
     {
         esp_log.task_printf("miot -> MIOT_COLOR");
-        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
-        Udp.print("color_off");                   //把数据写入发送缓冲区
-        Udp.endPacket();                          //发送数据
+        Udp.beginPacket("255.255.255.255", COMPUTER_PORT); //配置远端ip地址和端口
+        Udp.print("color_off");                            //把数据写入发送缓冲区
+        Udp.endPacket();                                   //发送数据
         esp_log.println("UDP数据发送成功");
         rgb_task_shutdown();
         light_on = 1;
@@ -942,9 +911,9 @@ void miotMode(uint8_t mode_mi)
     else if (mode_mi == BLINKER_CMD_MIOT_WARMTH)
     {
         esp_log.task_printf("miot -> MIOT_WARMTH(genshin)");
-        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
-        Udp.print("genshin");                     //把数据写入发送缓冲区
-        Udp.endPacket();                          //发送数据
+        Udp.beginPacket("255.255.255.255", COMPUTER_PORT); //配置远端ip地址和端口
+        Udp.print("genshin");                              //把数据写入发送缓冲区
+        Udp.endPacket();                                   //发送数据
         esp_log.println("UDP数据发送成功");
         light_on = 1;
         oled_state = 1;
@@ -952,9 +921,9 @@ void miotMode(uint8_t mode_mi)
         light_change = 1;
         delay(100);
         esp_log.print("Ada\n");
-        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
-        Udp.print("color");                       //把数据写入发送缓冲区
-        Udp.endPacket();                          //发送数据
+        Udp.beginPacket("255.255.255.255", COMPUTER_PORT); //配置远端ip地址和端口
+        Udp.print("color");                                //把数据写入发送缓冲区
+        Udp.endPacket();                                   //发送数据
         esp_log.println("UDP数据发送成功");
         on_sitclock();
     }
@@ -962,9 +931,9 @@ void miotMode(uint8_t mode_mi)
     {
         esp_log.task_printf("miot -> MIOT_TV(turn off computer and light)");
         rgb_task_shutdown();
-        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
-        Udp.print("turn_off");                    //把数据写入发送缓冲区
-        Udp.endPacket();                          //发送数据
+        Udp.beginPacket("255.255.255.255", COMPUTER_PORT); //配置远端ip地址和端口
+        Udp.print("turn_off");                             //把数据写入发送缓冲区
+        Udp.endPacket();                                   //发送数据
         esp_log.println("UDP数据发送成功");
         // oled_show("", "", "light off");
         esp_log.println("light off");
@@ -981,9 +950,9 @@ void miotMode(uint8_t mode_mi)
     else if (mode_mi == BLINKER_CMD_MIOT_READING)
     {
         esp_log.task_printf("miot -> MIOT_READING");
-        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
-        Udp.print("color_off");                   //把数据写入发送缓冲区
-        Udp.endPacket();                          //发送数据
+        Udp.beginPacket("255.255.255.255", COMPUTER_PORT); //配置远端ip地址和端口
+        Udp.print("color_off");                            //把数据写入发送缓冲区
+        Udp.endPacket();                                   //发送数据
         esp_log.println("UDP数据发送成功");
         rgb_task_shutdown();
         light_on = 1;
@@ -1013,9 +982,9 @@ void miotMode(uint8_t mode_mi)
         rgb_screen_on = 1;
         light_change = 1;
         esp_log.print("Ada\n");
-        Udp.beginPacket("255.255.255.255", 8080); //配置远端ip地址和端口
-        Udp.print("color");                       //把数据写入发送缓冲区
-        Udp.endPacket();                          //发送数据
+        Udp.beginPacket("255.255.255.255", COMPUTER_PORT); //配置远端ip地址和端口
+        Udp.print("color");                                //把数据写入发送缓冲区
+        Udp.endPacket();                                   //发送数据
         esp_log.println("UDP数据发送成功");
         on_sitclock();
     }
@@ -1031,7 +1000,6 @@ void miotQuery(int32_t queryCode)
         BlinkerMIOT.powerState(light_on ? "on" : "off");
         BlinkerMIOT.color(light_now);
         BlinkerMIOT.mode(mi_mode);
-        // BlinkerMIOT.colorTemp(1000);
         BlinkerMIOT.brightness(mi_light_bright);
         BlinkerMIOT.print();
         break;
@@ -1146,12 +1114,82 @@ void udpTask(void *xTaskUdp)
                 else if (strcmp(incomingPacket, "computer") == 0)
                 {
                     esp_log.task_printf("UDP -> miot");
-                    miotMode((uint8_t)6);
+                    miotMode(BLINKER_CMD_MIOT_COMPUTER);
+                }
+                else if (strcmp(incomingPacket, "normal_light") == 0)
+                {
+                    esp_log.task_printf("UDP -> miot");
+                    miotMode(BLINKER_CMD_MIOT_DAY);
+                }
+                else if (strcmp(incomingPacket, "computer?") == 0)
+                {
+                    Udp.beginPacket("255.255.255.255", COMPUTER_PORT); //配置远端ip地址和端口
+                    if (rgb_running == 1)
+                    {
+                        Udp.print("computer->Y");
+                    }
+                    else
+                    {
+                        Udp.print("computer->N");
+                    }
+                    Udp.endPacket();
+                }
+                else if (strcmp(incomingPacket, "state") == 0)
+                {
+                    esp_log.task_printf("UDP -> state");
+                    Udp.beginPacket("255.255.255.255", ANDROID_PORT); //配置远端ip地址和端口
+                    char str1[60];
+                    char str2[60];
+                    char str3[60];
+                    char str_timeinfo[60];
+                    char str_clockinfo[60];
+                    strftime(str_timeinfo, 100, "%a", &timeinfo);
+                    sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, str_timeinfo); //整合字符串
+                    strftime(str_clockinfo, 100, "%H:%M:%S", &timeinfo);
+                    if (rgb_running == 0)
+                    {
+                        if (WiFi.status() == WL_CONNECTED)
+                        {
+                            sprintf(str2, "%s 在线", str_clockinfo);
+                        }
+                        else
+                        {
+                            sprintf(str2, "%s 离线", str_clockinfo);
+                        }
+                    }
+                    else
+                    {
+                        sprintf(str2, "%s USB", str_clockinfo);
+                    }
+                    if (timeinfo.tm_sec % 10 >= 5)
+                    {
+                        sprintf(str3, "%s|%s℃ %s", text_final, temp_final, aqi_final);
+                    }
+                    else
+                    {
+                        sprintf(str3, "%s|%s%% %s", text_final, humidity_final, category_final);
+                    }
+                    Udp.println(str1);
+                    Udp.println(str2);
+                    Udp.println(str3);
+                    Udp.println(hitokoto_final);
+                    Udp.println(light_on ? "状态：开" : "状态：关");
+                    for (int i = 0; i < 3; i++)
+                    {
+                        Udp.printf("%d号灯带:%d:%d:%d\n", i,
+                                   light_color_r[i],
+                                   light_color_g[i],
+                                   light_color_b[i]);
+                    }
+                    Udp.printf("模式:%d\n", mi_mode);
+                    Udp.printf("亮度:%d\n", mi_light_bright);
+                    Udp.endPacket();
+                    esp_log.task_printf("state -> UDP");
                 }
                 esp_log.printf("UDP数据包内容为: %s\n", incomingPacket); //向串口打印信息
             }
         }
-        delay(3000); //延时3秒
+        delay(100); //延时3秒
     }
 }
 void buttonTask(void *xTaskButton)
@@ -1484,7 +1522,7 @@ void debugTask(void *xTaskDebug) // debug...
 }
 void setup()
 {
-    start_setup = 111;
+    start_setup = NOT_SETUP;
     esp_log.setup();
     esp_log.println("bszydxh esp32 start!");
     WiFi.mode(WIFI_STA);
@@ -1525,12 +1563,12 @@ void setup()
     retry = 0;
     oled_show("smart_screen", "---bszydxh", "连接成功", "加载系统中...");
     esp_log.println("wifi! done");
-    if (Udp.begin(1145))
+    if (Udp.begin(ESP32_OLED_PORT))
     { //启动Udp监听服务
         esp_log.println("监听成功");
         //打印本地的ip地址，在UDP工具中会使用到
         // WiFi.localIP().toString().c_str()用于将获取的本地IP地址转化为字符串
-        esp_log.printf("现在收听IP：%s, UDP端口：%d\n", WiFi.localIP().toString().c_str(), 1145);
+        esp_log.printf("现在收听IP：%s, UDP端口：%d\n", WiFi.localIP().toString().c_str(), ESP32_OLED_PORT);
     }
     else
     {
@@ -1556,7 +1594,7 @@ void setup()
     BlinkerMIOT.attachMode(miotMode);
     BlinkerMIOT.attachBrightness(miotBright);
     BlinkerMIOT.attachQuery(miotQuery);
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
     light_change = 1;
     xTaskCreatePinnedToCore(oledTask, "oledTask", 3072, NULL, 1, &oled_run, 0);
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, &blinker_run, 0);

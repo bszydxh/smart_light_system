@@ -1,5 +1,6 @@
 #include "arduino.h"
-#define ESPLOG_ALL 5
+#define ESPLOG_ALL 6
+#define ESPLOG_DEBUG 5
 #define ESPLOG_INFO 4
 #define ESPLOG_TASK 3
 #define ESPLOG_WARN 2
@@ -36,7 +37,6 @@ public:
     {
         Serial.begin(256000);
         delay(500);
-        // udp.begin(7777);
     }
     void set_log_out_level(int n) //默认为warning
     {
@@ -70,6 +70,8 @@ public:
     {
         if (log_level >= ESPLOG_ALL)
         {
+            Serial.printf("[%ld]", millis());
+            Serial.printf("[debug]");
             Serial.printf(arg...);
         }
     }
@@ -78,6 +80,8 @@ public:
     {
         if (log_level >= ESPLOG_ALL)
         {
+            Serial.printf("[%ld]", millis());
+            Serial.printf("[debug]");
             Serial.println(arg);
         }
     }
@@ -86,6 +90,8 @@ public:
     {
         if (log_level >= ESPLOG_ALL)
         {
+            Serial.printf("[%ld]", millis());
+            Serial.printf("[debug]");
             Serial.print(arg);
         }
     }
@@ -97,7 +103,6 @@ public:
             Serial.printf("[%ld]", millis());
             Serial.printf("[error]");
             Serial.printf(arg...);
-            Serial.printf("\n");
         }
     }
     template <typename... T>
@@ -108,7 +113,6 @@ public:
             Serial.printf("[%ld]", millis());
             Serial.printf("[task]");
             Serial.printf(arg...);
-            Serial.printf("\n");
         }
     }
     template <typename... T>
@@ -119,7 +123,6 @@ public:
             Serial.printf("[%ld]", millis());
             Serial.printf("[info]");
             Serial.printf(arg...);
-            Serial.printf("\n");
         }
     }
     template <typename... T>
@@ -130,7 +133,6 @@ public:
             Serial.printf("[%ld]", millis());
             Serial.printf("[warning]");
             Serial.printf(arg...);
-            Serial.printf("\n");
         }
     }
 };

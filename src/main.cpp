@@ -996,7 +996,12 @@ void httpTask(void *xTaskHttp) //巨型http请求模块任务
             {
                 esp_log.println("configTime!");
                 configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
-                
+                if (getLocalTime(&timeinfo))
+                {
+                    esp32_Http_weather();
+                    esp32_Http_aqi();
+                    esp32_Http_hitokoto(); //获取一言
+                }
                 continue;
             }
             if (timeinfo.tm_sec == 10)

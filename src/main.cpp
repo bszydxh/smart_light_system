@@ -62,8 +62,8 @@ esp_EEPROM 0-1024自定义
 #include "function.cpp"
 #include "password.cpp"
 #include "esp_heap_caps.h"
-#define DEBUG                   //调试模式
-#define ESPLOG_LEVEL ESPLOG_ALL //调试等级
+#define DEBUG                    //调试模式
+#define ESPLOG_LEVEL ESPLOG_TASK //调试等级
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义
 #define NUM_LEDS 120
@@ -145,12 +145,12 @@ ESPLog esp_log;
 ////////////////////////////////////////////////////////////////
 // http请求部分,查天气,get
 //#define ARDUINOJSON_USE_LONG_LONG 1
-char text_final[30] = "   ";
-char covid_final[30] = " ";
-char temp_final[10] = " ";
-char humidity_final[10] = " ";
-char aqi_final[10] = " ";
-char category_final[30] = " ";
+char text_final[30] = "";
+char covid_final[30] = "";
+char temp_final[10] = "";
+char humidity_final[10] = "";
+char aqi_final[10] = "";
+char category_final[30] = "";
 char hitokoto_final[100] = "松花酿酒,春水煎茶。";
 ////////////////////////////////////////////////////////////////
 //函数预定义部分
@@ -194,16 +194,18 @@ void reset_sitclock_limit()
     esp_log.printf("set_clock_limit:%d:%d\n", target_hour, target_min);
 }
 // void sitclock_task(void *sitclock_task_pointer);
-void off_sitclock() //跟关灯绑定
+bool off_sitclock() //跟关灯绑定
 {
+    target_hour = -1;
+    target_min = -1;
     if (sitclock_on != 0)
     {
         esp_log.println("sitclock off!");
         sitclock_on = 0;
         vTaskDelete(sitclock_run);
+        return true;
     }
-    target_hour = -1;
-    target_min = -1;
+    return false;
 }
 int is_sitclock()
 {
@@ -613,32 +615,26 @@ void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
     CRGB leds_rgb_mode[NUM_LEDS];
     while (1)
     {
-        //  Wait for first byte of Magic Word
         //魔法包结构 Ada+校验码+rgb数据
         for (i = 0; i < sizeof(prefix); ++i) //读到Ada开始
         {
         waitLoop:
-            // delay(1); // otherwise, start over
             while (!Serial.available())
                 ;
-            ;
             // Check next byte in Magic Word
             if (prefix[i] == Serial.read())
                 continue;
             i = 0;
             goto waitLoop;
         }
-        // Hi, Lo, Checksum
         while (!Serial.available())
             ;
         hi = Serial.read();
         while (!Serial.available())
             ;
-        ;
         lo = Serial.read();
         while (!Serial.available())
             ;
-        ;
         chk = Serial.read();
         //检查校验码
         if (chk != (hi ^ lo ^ 0x55))
@@ -646,7 +642,8 @@ void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
             i = 0;
             goto waitLoop;
         } //线程阻断
-        for (uint8_t i = 0; i < NUM_LEDS; i++)
+
+        for (uint8_t j = 0; j < NUM_LEDS; j++)
         {
             byte r, g, b;
             while (!Serial.available())
@@ -658,9 +655,9 @@ void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
             while (!Serial.available())
                 ;
             b = Serial.read();
-            leds_rgb_mode[i].r = r;
-            leds_rgb_mode[i].g = g;
-            leds_rgb_mode[i].b = b;
+            leds_rgb_mode[j].r = r;
+            leds_rgb_mode[j].g = g;
+            leds_rgb_mode[j].b = b;
         }
         if (rgb_running == 1)
         {
@@ -668,11 +665,11 @@ void rgbScreenTask(void *xTaskRgbScreen) //流光溢彩任务
         }
         else
         {
+            vTaskSuspend(NULL);
             delay(1000); //留给调度器时间收回串口
         }
     }
 }
-
 void rgb_task_run()
 {
     rgb_running = 1;
@@ -691,8 +688,8 @@ void rgb_task_shutdown()
     rgb_running = 0;
     if (rgb_running == 1)
     {
-        delay(100);
         vTaskSuspend(rgb_run);
+        delay(100);
     }
 }
 ////////////////////////////////////////////////////////////////
@@ -996,11 +993,20 @@ void httpTask(void *xTaskHttp) //巨型http请求模块任务
             {
                 esp_log.println("configTime!");
                 configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
+                if (timeinfo.tm_min > 5)
+                {
+                    oled_show("smart_screen", "系统错误", "ntp失去连接", "正在重启...");
+                    hard_restart();
+                }
                 if (getLocalTime(&timeinfo))
                 {
                     esp32_Http_weather();
                     esp32_Http_aqi();
                     esp32_Http_hitokoto(); //获取一言
+                    if (off_sitclock())
+                    {
+                        on_sitclock();
+                    }
                 }
                 continue;
             }
@@ -1021,6 +1027,66 @@ void httpTask(void *xTaskHttp) //巨型http请求模块任务
             }
         }
     }
+}
+void sendState(const char *host)
+{
+    Udp.beginPacket(host, ANDROID_PORT); //配置远端ip地址和端口
+    char str1[60];
+    char str2[60];
+    char str3[60];
+    char str_timeinfo[60];
+    char str_clockinfo[60];
+    strftime(str_timeinfo, 100, "%a", &timeinfo);
+    sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, str_timeinfo); //整合字符串
+    strftime(str_clockinfo, 100, "%H:%M:%S", &timeinfo);
+    if (rgb_running == 0)
+    {
+        if (WiFi.status() == WL_CONNECTED && Blinker.connected())
+        {
+            sprintf(str2, "%s 在线", str_clockinfo);
+        }
+        else
+        {
+            sprintf(str2, "%s 离线", str_clockinfo);
+        }
+    }
+    else
+    {
+        sprintf(str2, "%s USB", str_clockinfo);
+    }
+    if (timeinfo.tm_sec % 10 >= 5)
+    {
+        sprintf(str3, "%s|%s℃ %s", text_final, temp_final, aqi_final);
+    }
+    else
+    {
+        sprintf(str3, "%s|%s%% %s", text_final, humidity_final, category_final);
+    }
+    CRGB leds_temp[NUM_LEDS];
+    if (!xQueuePeek(leds_queue, &leds_temp, 100) == pdTRUE)
+    {
+        esp_log.task_printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+        memset(&leds_temp, 0, sizeof(CRGB[NUM_LEDS]));
+    }
+    DynamicJsonDocument response_dto(10240);
+    response_dto["str1"] = str1;
+    response_dto["str2"] = str2;
+    response_dto["str3"] = str3;
+    response_dto["str4"] = hitokoto_final;
+    response_dto["state"] = light_on;
+    response_dto["rgb"] = rgb_running;
+    response_dto["light_mode"] = mode;
+    response_dto["light_brightness"] = brightness_with_leds;
+    JsonArray leds = response_dto.createNestedArray("leds");
+    for (int i = 0; i < 120; i++)
+    {
+        uint32_t color = 0;
+        color = leds_temp[i].b | leds_temp[i].g << 8 | leds_temp[i].r << 16;
+        leds.add(color);
+    }
+    serializeJson(response_dto, Udp);
+    Udp.endPacket();
+    esp_log.task_printf("state -> UDP\n");
 }
 void udpTask(void *xTaskUdp)
 {
@@ -1051,7 +1117,6 @@ void udpTask(void *xTaskUdp)
                 {
                     esp_log.printf("%s\n", incomingPacket); //向串口打印信息
                     incomingPacket[len] = 0;                //清空缓存
-                    Udp.flush();
                     if (strcmp(incomingPacket, "turn_on") == 0)
                     {
                         esp_log.task_printf("UDP -> miot\n");
@@ -1088,64 +1153,8 @@ void udpTask(void *xTaskUdp)
                     else if (strcmp(incomingPacket, "state") == 0)
                     {
                         esp_log.task_printf("UDP -> state\n");
-                        Udp.beginPacket(Udp.remoteIP().toString().c_str(), ANDROID_PORT); //配置远端ip地址和端口
-                        char str1[60];
-                        char str2[60];
-                        char str3[60];
-                        char str_timeinfo[60];
-                        char str_clockinfo[60];
-                        strftime(str_timeinfo, 100, "%a", &timeinfo);
-                        sprintf(str1, "%4d-%02d-%02d %s", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, str_timeinfo); //整合字符串
-                        strftime(str_clockinfo, 100, "%H:%M:%S", &timeinfo);
-                        if (rgb_running == 0)
-                        {
-                            if (WiFi.status() == WL_CONNECTED && Blinker.connected())
-                            {
-                                sprintf(str2, "%s 在线", str_clockinfo);
-                            }
-                            else
-                            {
-                                sprintf(str2, "%s 离线", str_clockinfo);
-                            }
-                        }
-                        else
-                        {
-                            sprintf(str2, "%s USB", str_clockinfo);
-                        }
-                        if (timeinfo.tm_sec % 10 >= 5)
-                        {
-                            sprintf(str3, "%s|%s℃ %s", text_final, temp_final, aqi_final);
-                        }
-                        else
-                        {
-                            sprintf(str3, "%s|%s%% %s", text_final, humidity_final, category_final);
-                        }
-                        CRGB leds_temp[NUM_LEDS];
-                        if (!xQueuePeek(leds_queue, &leds_temp, 100) == pdTRUE)
-                        {
-                            esp_log.task_printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-                            memset(&leds_temp, 0, sizeof(CRGB[NUM_LEDS]));
-                        }
-                        DynamicJsonDocument response_dto(10240);
-                        response_dto["str1"] = str1;
-                        response_dto["str2"] = str2;
-                        response_dto["str3"] = str3;
-                        response_dto["str4"] = hitokoto_final;
-                        response_dto["state"] = light_on;
-                        response_dto["oled_mode"] = oled_mode;
-                        response_dto["light_mode"] = mode;
-                        response_dto["light_brightness"] = brightness_with_leds;
-                        JsonArray leds = response_dto.createNestedArray("leds");
-                        for (int i = 0; i < 30; i++)
-                        {
-                            uint32_t color = 0;
-                            color = leds_temp[i].b | leds_temp[i].g << 8 | leds_temp[i].r << 16;
-                            leds.add(color);
-                        }
-                        serializeJson(response_dto, Udp);
-                        Udp.endPacket();
-                        esp_log.task_printf("state -> UDP\n");
                     }
+                    sendState(Udp.remoteIP().toString().c_str());
                 }
             }
         }
@@ -1192,7 +1201,7 @@ void udpConfigTask(void *xTaskConfigUdp)
                     response_dto["str3"] = "启动app完成操作";
                     response_dto["str4"] = str_connect;
                     response_dto["state"] = -1;
-                    response_dto["oled_mode"] = -1;
+                    response_dto["rgb"] = rgb_running;
                     response_dto["light_mode"] = -1;
                     response_dto["light_brightness"] = -1;
                     JsonArray leds = response_dto.createNestedArray("leds");
@@ -1315,6 +1324,7 @@ void buttonConfigTask(void *xTaskButtonConfig)
         }
         else if (button2_now == 1 && button2_before == 0)
         {
+            hard_restart();
             esp_log.printf("\n2down\n");
         }
         button1_before = button1_now;
@@ -1641,10 +1651,19 @@ void setup()
         WiFi.softAPsetHostname("bszydxh_smart_light");
         xTaskCreatePinnedToCore(udpConfigTask, "udpConfigTask", 7168, NULL, 0, &udp_config_run, 0);
         char str_connect[100];
+        int time = 0;
         while (system_state == CONFIG_SETUP)
         {
             sprintf(str_connect, "%d台设备已连接", WiFi.softAPgetStationNum());
-            oled_show("smart_screen", "配网模式beta", "启动app完成操作", str_connect);
+            if (time % 2 == 0)
+            {
+                oled_show("配网模式", "请连接设备wifi", "启动app进行配网", "退出请按按钮二");
+            }
+            else
+            {
+                oled_show("配网模式", "请连接设备wifi", "启动app进行配网", str_connect);
+            }
+            time++;
             delay(3000);
         }
         vTaskDelete(udp_config_run);

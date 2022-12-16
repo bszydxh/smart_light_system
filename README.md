@@ -1,5 +1,5 @@
 # smart_light_system
-#### ------更新于2022/11/15-------
+#### ------更新于2022/12/17-------
 ## 写在前面
 整个项目立于2021-11-10
 
@@ -42,6 +42,8 @@ udp进行局域网下广播收发包
 
 c#电脑端控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/udp_turn_off),作为系统的比较重要的扩展，需要自行打包
 
+安卓控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/top.bszydxh.light),需要自行打包,并且按需要改动
+
 感谢c#程序来源[tty228/udp_turn_off](https://github.com/tty228/udp_turn_off)
 
 欢迎提issue
@@ -83,6 +85,7 @@ c#电脑端控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/udp_tur
 4. 久坐提醒(闪烁)
 5. 与电脑智能联动
 6. 触摸按键两个，用于开关灯/切换模式
+7. 智能配网，配网所需app已开源
 
 ## 注意事项 
 1. ws2812b灯带不必外接电容/电阻

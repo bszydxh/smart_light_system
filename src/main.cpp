@@ -62,8 +62,8 @@ esp_EEPROM 0-1024自定义
 #include "function.cpp"
 #include "password.cpp"
 #include "esp_heap_caps.h"
-#define DEBUG                    //调试模式
-#define ESPLOG_LEVEL ESPLOG_TASK //调试等级
+#define DEBUG                   //调试模式
+#define ESPLOG_LEVEL ESPLOG_ALL //调试等级
 ////////////////////////////////////////////////////////////////
 //灯光初始化定义
 #define NUM_LEDS 120
@@ -343,6 +343,13 @@ void EEPROM_setup()
     light_now = (light_color_r[0] * 256 + light_color_g[0]) * 256 + light_color_b[0]; //小爱指定的颜色,用于回调,与逻辑耦合的不是那么深,默认天蓝色,具体读eeprom里面的
 }
 ////////////////////////////////////////////////////////////////
+int http_get(HTTPClient &http)
+{
+    // vTaskSuspend(blinker_run);
+    int httpCode = http.GET();
+    // vTaskResume(blinker_run);
+    return httpCode;
+}
 void esp32_Http_covid()
 {
     HTTPClient httpClient3;
@@ -350,7 +357,7 @@ void esp32_Http_covid()
     httpClient3.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
     esp_log.task_printf("esp32 -> covid server\n");
     httpClient3.addHeader("charset", "utf-8");
-    int httpCode3 = httpClient3.GET();
+    int httpCode3 = http_get(httpClient3);
     if (httpCode3 == HTTP_CODE_OK)
     {
         const String &payload3 = httpClient3.getString();
@@ -379,7 +386,7 @@ void esp32_Http_aqi()
     httpClient.begin(URL2);
     httpClient.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
     httpClient.addHeader("charset", "utf-8");
-    int httpCode = httpClient.GET();
+    int httpCode = http_get(httpClient);
     esp_log.task_printf("esp32 -> aqi server\n");
     if (httpCode == HTTP_CODE_OK)
     {
@@ -409,7 +416,7 @@ void esp32_Http_weather()
     httpClient.begin(URL);
     httpClient.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
     httpClient.addHeader("charset", "utf-8");
-    int httpCode = httpClient.GET();
+    int httpCode = http_get(httpClient);
     esp_log.task_printf("esp32 -> weather server:\n");
     if (httpCode == HTTP_CODE_OK)
     {
@@ -447,7 +454,7 @@ void esp32_Http_hitokoto()
     httpClient2.begin("https://v1.hitokoto.cn/?encode=text&max_length=10");
     httpClient2.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36");
     httpClient2.addHeader("charset", "utf-8");
-    int httpCode2 = httpClient2.GET();
+    int httpCode2 = http_get(httpClient2);
     esp_log.task_printf("esp32 -> hitokoto server\n");
     if (httpCode2 == HTTP_CODE_OK)
     {
@@ -539,7 +546,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
 }
 void print_oled() //用户界面,必须循环,否则出事
 {
-    getLocalTime(&timeinfo);
+    getLocalTime(&timeinfo, 100U);
     char str1[60];
     char str2[60];
     char str3[60];
@@ -572,7 +579,6 @@ void print_oled() //用户界面,必须循环,否则出事
     {
         sprintf(str3, "%s|%s%% %s", text_final, humidity_final, category_final);
     }
-
     oled_show(str1, str2, str3, hitokoto_final);
 }
 int counter = 0;       //官方计数
@@ -1103,7 +1109,7 @@ void udpTask(void *xTaskUdp)
     }
     while (1)
     {
-        delay(100);
+        delay(10);
         if (WiFi.status() == WL_CONNECTED)
         {
             int packetSize = Udp.parsePacket(); //获得解析包
@@ -1547,24 +1553,9 @@ void debugTask(void *xTaskDebug) // debug...
         esp_log.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
         esp_log.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
         esp_log.println("///////////////////////////////////");
-        esp_log.print("rgb");
-        esp_log.print(uxTaskGetStackHighWaterMark(rgb_run));
-        esp_log.print("sit");
-        esp_log.print(uxTaskGetStackHighWaterMark(sitclock_run));
-        esp_log.print("oled");
-        esp_log.print(uxTaskGetStackHighWaterMark(oled_run));
-        esp_log.print("blinker");
-        esp_log.print(uxTaskGetStackHighWaterMark(blinker_run));
-        esp_log.print("http");
-        esp_log.print(uxTaskGetStackHighWaterMark(http_run));
-        esp_log.print("udp");
-        esp_log.print(uxTaskGetStackHighWaterMark(udp_run));
-        esp_log.print("rgbc");
-        esp_log.print(uxTaskGetStackHighWaterMark(rgbChange_run));
-        esp_log.print("button");
-        esp_log.print(uxTaskGetStackHighWaterMark(button_run));
-        esp_log.print("fastled");
-        esp_log.println(uxTaskGetStackHighWaterMark(fastled_run));
+        TaskStatus_t blinker_status;
+        vTaskGetInfo(blinker_run, &blinker_status, pdTRUE, eInvalid);
+        esp_log.warning_printf("blinker status", blinker_status.eCurrentState);
         esp_log.println("/////////////////////////////////////////////");
         delay(1000);
     }
@@ -1682,16 +1673,17 @@ void setup()
     BlinkerMIOT.attachQuery(miotQuery);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
     light_change = 1;
-    xTaskCreatePinnedToCore(oledTask, "oledTask", 3072, NULL, 2, &oled_run, 0);
+    xTaskCreatePinnedToCore(oledTask, "oledTask", 4096, NULL, 2, &oled_run, 0);
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 7168, NULL, 2, &blinker_run, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 7168, NULL, 0, &http_run, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 7168, NULL, 0, &udp_run, 0);
     xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 3072, NULL, 3, &rgbChange_run, 1); //请不要动,动了就寄-以最高优先级运行
     xTaskCreatePinnedToCore(buttonTask, "buttonTask", 4096, NULL, 2, &button_run, 0);
     xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 3, &fastled_run, 1);
-    // xTaskCreatePinnedToCore(debugTask, "debugTask", 2048, NULL, 4, NULL, 0);
+    //xTaskCreatePinnedToCore(debugTask, "debugTask", 2048, NULL, 4, NULL, 0);
 }
 void loop()
 {
+    // esp_log.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
     delay(5000); //踢看门狗,loop本质上也是freertos中的一个任务
 }

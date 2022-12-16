@@ -1,9 +1,10 @@
 # smart_light_system
 #### ------更新于2022/12/17-------
 ## 效果演示
-
-[流光溢彩演示]https://user-images.githubusercontent.com/79249935/208167465-ba8f5479-bb8d-4373-8cfc-ede13e6bcc22.mp4
-
+### 流光溢彩
+https://user-images.githubusercontent.com/79249935/208168212-7c93ab88-0b14-446b-8acc-c92a9ee06c3b.mp4
+### 电脑反控灯带
+https://user-images.githubusercontent.com/79249935/208168375-cefdf474-2f2c-4264-8bb8-2c2823d160cd.mp4
 ## 写在前面
 整个项目立于2021-11-10
 

@@ -8,7 +8,7 @@
 #define ESPLOG_OFF 0
 class LightSet
 {
-    int light_set_num = 0; //通信量
+    int light_set_num = 0; // 通信量
 public:
     void reset()
     {
@@ -38,7 +38,7 @@ public:
         Serial.begin(256000);
         delay(500);
     }
-    void set_log_out_level(int n) //默认为warning
+    void set_log_out_level(int n) // 默认为warning
     {
         if (n == ESPLOG_ALL)
         {

@@ -10,8 +10,8 @@
 #include "Update.h"           //Blinker.h依赖
 #include "WiFiClientSecure.h" //Blinker.h依赖
 #include "EEPROM.h"           //Blinker.h依赖
-#define BLINKEER_PRINT Serial //Blinker.h依赖
-#define BLINKER_WIFI          //Blinker.h依赖
+#define BLINKEER_PRINT Serial // Blinker.h依赖
+#define BLINKER_WIFI          // Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #include "Blinker.h"
 #include "FastLED.h"
@@ -19,7 +19,7 @@
  * Arduino interface for the use of WS2812 strip LEDs
  * Uses Adalight protocol and is compatible with Boblight, Prismatik etc...
  * "Magic Word" for synchronisation is 'Ada' followed by LED High, Low and Checksum
- * @author: Wifsimster <wifsimster@gmail.com> 
+ * @author: Wifsimster <wifsimster@gmail.com>
  * @library: FastLED v3.001
  * @date: 11/22/2015
  */
@@ -39,7 +39,7 @@ CRGB leds[NUM_LEDS];
 void setup()
 {
     // Use NEOPIXEL to keep true colors
-    //FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
+    // FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
     FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
     // Initial RGB flash
     LEDS.showColor(CRGB(255, 0, 0));
@@ -90,6 +90,40 @@ void loop()
     {
         i = 0;
         goto waitLoop;
+    }
+    while (1)
+    {
+        int reset_flag = 0;
+        for (int j = 0; j < sizeof(prefix); ++j)
+        {
+            while (!Serial.available())
+                ;
+            ;
+            if (prefix[i] != Serial.read())
+            {
+                break;
+                reset_flag = 1;
+            }
+        }
+        if (reset_flag == 1)
+        {
+            continue;
+        }
+        while (!Serial.available())
+            ;
+        hi = Serial.read();
+        while (!Serial.available())
+            ;
+        ;
+        lo = Serial.read();
+        while (!Serial.available())
+            ;
+        ;
+        chk = Serial.read();
+        if (chk == (hi ^ lo ^ 0x55))
+        {
+            break;
+        }
     }
     memset(leds, 0, NUM_LEDS * sizeof(struct CRGB));
     // Read the transmission data and set LED values

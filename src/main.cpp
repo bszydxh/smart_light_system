@@ -968,8 +968,15 @@ void blinkerTask(void *xTaskBlinker) // blinker任务
 {
     while (1)
     {
-        Blinker.run();
-        delay(100);
+        try
+        {
+            Blinker.run();
+            delay(100);
+        }
+        catch (const std::exception &e)
+        {
+            esp_log.error_printf(e.what());
+        }
     }
 }
 void httpTask(void *xTaskHttp) // 巨型http请求模块任务
@@ -1104,6 +1111,7 @@ void udpTask(void *xTaskUdp)
     }
     while (1)
     {
+        delay(10);
         try
         {
             if (WiFi.status() == WL_CONNECTED)
@@ -1636,7 +1644,6 @@ void setup()
     if (system_state == CONFIG_SETUP)
     {
         esp_log.printf("enter config mode!\n");
-
         oled_show(DEVICE_NAME, "正在启动设备热点", "进入配网模式", "请稍后。。");
         WiFi.disconnect();
         WiFi.softAP("bszydxh_smart_light");

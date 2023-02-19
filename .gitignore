@@ -1,4 +1,5 @@
 .pio
+*.log
 test
 config.cpp
 src/password.cpp

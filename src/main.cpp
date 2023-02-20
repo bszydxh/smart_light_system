@@ -68,8 +68,8 @@ esp_EEPROM 0-1024自定义
 // 定义五行后把下面 #include "config.cpp" 去掉
 #include "function.cpp"
 #include "esp_heap_caps.h"
-#define DEBUG                   // 调试模式
-#define ESPLOG_LEVEL ESPLOG_ALL // 调试等级
+#define DEBUG                    // 调试模式
+#define ESPLOG_LEVEL ESPLOG_INFO // 调试等级
 ////////////////////////////////////////////////////////////////
 // 灯光初始化定义
 #define NUM_LEDS 120
@@ -451,7 +451,7 @@ void esp32_Http_hitokoto()
         if (httpCode2 == HTTP_CODE_OK)
         {
             const String &payload2 = httpClient2.getString();
-            esp_log.task_printf("hitokoto server -> esp32:");
+            esp_log.task_printf("hitokoto server -> esp32:\n");
             esp_log.println(payload2);
             if (payload2 != NULL)
             {
@@ -488,7 +488,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
             u8g2.setFont(u8g2_font_wqy14_t_gb2312);
             u8g2.setCursor(0, 62);
             u8g2.print(str4);
-            esp_log.info_printf("%s  %s  %s  %s -> oled\n", str1, str2, str3, str4);
+            esp_log.printf("%s  %s  %s  %s -> oled\n", str1, str2, str3, str4);
             u8g2.sendBuffer();
         }
         else if (oled_mode == 2)
@@ -508,7 +508,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
             u8g2.sendBuffer();
             delay(700);
             oled_mode = 1; // 欢迎完正常
-            esp_log.info_printf("欢迎回来 bszydxh  灯带就绪...  显示屏就绪... %s  -> oled\n", str4);
+            esp_log.printf("欢迎回来 bszydxh  灯带就绪...  显示屏就绪... %s  -> oled\n", str4);
         }
         else if (oled_mode == 3)
         {
@@ -529,7 +529,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
             u8g2.print(str4);
             esp_log.println("oled_change");
             u8g2.sendBuffer();
-            esp_log.info_printf("!!!久坐提醒!!!  %s  %s  %s  -> oled\n", str_sit_start_time, str_sit_time, str4);
+            esp_log.printf("!!!久坐提醒!!!  %s  %s  %s  -> oled\n", str_sit_start_time, str_sit_time, str4);
             delay(10000);
             oled_mode = 1; // 提示完正常
         }
@@ -538,7 +538,7 @@ void oled_show(const char *str1, const char *str2, const char *str3, const char 
     {
         u8g2.clearBuffer();
         u8g2.sendBuffer();
-        esp_log.info_printf("oled_off\n");
+        esp_log.printf("oled_off\n");
     }
 }
 void print_oled() // 用户界面,必须循环,否则出事
@@ -1119,7 +1119,8 @@ void udpTask(void *xTaskUdp)
                 int packetSize = Udp.parsePacket(); // 获得解析包
                 if (packetSize)                     // 解析包不为空
                 {
-                    esp_log.info_printf("%s:%d(%d)->UDP:\n", Udp.remoteIP().toString().c_str(), Udp.remotePort(), packetSize);
+                    esp_log.info_printf("Freeheap:%d\n", xPortGetFreeHeapSize());
+                    esp_log.printf("%s:%d(%d)->UDP:\n", Udp.remoteIP().toString().c_str(), Udp.remotePort(), packetSize);
                     char incomingPacket[255];
                     int len = Udp.read(incomingPacket, 255); // 返回数据包字节数
                     if (len > 0)
@@ -1194,7 +1195,7 @@ void udpConfigTask(void *xTaskConfigUdp)
         if (packetSize)                     // 解析包不为空
         {
 
-            esp_log.info_printf("%s:%d(%d)->UDP:\n", Udp.remoteIP().toString().c_str(), Udp.remotePort(), packetSize);
+            esp_log.printf("%s:%d(%d)->UDP:\n", Udp.remoteIP().toString().c_str(), Udp.remotePort(), packetSize);
             char incomingPacket[255];
             int len = Udp.read(incomingPacket, 255); // 返回数据包字节数
             String packet = incomingPacket;
@@ -1438,7 +1439,7 @@ void light_color_out(int *r, int *g, int *b, int bright)
         }
         xQueueOverwrite(leds_queue, &leds_temp);
         brightness_with_leds = light_change_brightness;
-        esp_log.info_printf("Light change\n");
+        esp_log.printf("Light change\n");
         delay(5);
     }
     light_now_brightness = light_brightness;
@@ -1691,6 +1692,5 @@ void setup()
 }
 void loop()
 {
-    // esp_log.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
     delay(5000); // 踢看门狗,loop本质上也是freertos中的一个任务
 }

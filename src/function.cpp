@@ -3,7 +3,7 @@
 #define ESPLOG_DEBUG 5
 #define ESPLOG_INFO 4
 #define ESPLOG_TASK 3
-#define ESPLOG_WARN 2
+#define ESPLOG_WARN 2 
 #define ESPLOG_ERROR 1
 #define ESPLOG_OFF 0
 class LightSet

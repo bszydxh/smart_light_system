@@ -1,0 +1,3 @@
+[submodule "lib/blinker"]
+	path = lib/blinker
+	url = https://github.com/blinker-iot/blinker-library.git

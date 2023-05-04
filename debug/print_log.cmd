@@ -1,1 +1,1 @@
-pio device monitor -b 256000> esp.log
+pio device monitor -b 256000 > esp.log

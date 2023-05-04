@@ -1,9 +1,13 @@
+#ifndef FUNCTION_H
+#define FUNCTION_H
 #include "arduino.h"
+#define DEST_FS_USES_LITTLEFS
+#include <ESP32-targz.h> //解析gzip
 #define ESPLOG_ALL 6
 #define ESPLOG_DEBUG 5
 #define ESPLOG_INFO 4
 #define ESPLOG_TASK 3
-#define ESPLOG_WARN 2 
+#define ESPLOG_WARN 2
 #define ESPLOG_ERROR 1
 #define ESPLOG_OFF 0
 class LightSet
@@ -136,3 +140,26 @@ public:
         }
     }
 };
+
+class ESPGZIP
+{
+    GzUnpacker *GZUnpacker;
+
+public:
+    void setup()
+    {
+        GZUnpacker = new GzUnpacker();
+        GZUnpacker->haltOnError(true);                                            // stop on fail (manual restart/reset required)
+        GZUnpacker->setupFSCallbacks(targzTotalBytesFn, targzFreeBytesFn);        // prevent the partition from exploding, recommended
+        GZUnpacker->setGzProgressCallback(BaseUnpacker::defaultProgressCallback); // targzNullProgressCallback or defaultProgressCallback
+        GZUnpacker->setLoggerCallback(BaseUnpacker::targzPrintLoggerCallback);    // gz log verbosity
+    }
+    void ungzip(Stream *stream)
+    {
+        if (!GZUnpacker->gzStreamUpdater(stream, UPDATE_SIZE_UNKNOWN))
+        {
+            Serial.printf("gzStreamUpdater failed with return code #%d\n", GZUnpacker->tarGzGetError());
+        } // tar log verbosity
+    }
+};
+#endif

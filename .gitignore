@@ -1,6 +1,8 @@
 .pio
 *.log
 test
+xd.cpp
+xd.h
 config.cpp
 src/password.cpp
 .vscode/.browse.c_cpp.db*

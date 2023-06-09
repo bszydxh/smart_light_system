@@ -34,7 +34,6 @@ esp_EEPROM 0-1024自定义
 #include "Wire.h"                     //U8g2.h依赖
 #include "freertos/FreeRTOS.h"
 #define DEST_FS_USES_LITTLEFS
-#include <ESP32-targz.h>      //解析gzip
 #include "WiFi.h"             //Blinker.h依赖
 #include "ESPmDNS.h"          //Blinker.h依赖
 #include "FS.h"               //Blinker.h依赖
@@ -65,6 +64,7 @@ esp_EEPROM 0-1024自定义
 #define ANDROID_PORT 8081
 #define ESP32_OLED_PORT 1145
 #define ESP32_KEYBOARD_PORT 8484
+#define MAX_SRV_CLIENTS 4
 #if __has_include("config.cpp") // 非c++官方用法，config.cpp是项目作者自己的配置文件
 #include "config.cpp"
 #endif
@@ -75,7 +75,7 @@ esp_EEPROM 0-1024自定义
 // 定义五行后把下面 #include "config.cpp" 去掉
 #include "esp_heap_caps.h"
 #define DEBUG                   // 调试模式
-#define ESPLOG_LEVEL ESPLOG_ALL // 调试等级
+#define ESPLOG_LEVEL ESPLOG_TASK // 调试等级
 ////////////////////////////////////////////////////////////////
 // 灯光初始化定义
 #define NUM_LEDS 120
@@ -90,14 +90,17 @@ TaskHandle_t oled_run;
 TaskHandle_t blinker_run;
 TaskHandle_t http_run;
 TaskHandle_t udp_run;
+TaskHandle_t tcp_run;
 TaskHandle_t udp_config_run;
 TaskHandle_t rgbChange_run;
 TaskHandle_t button_run;
 TaskHandle_t button_config_run;
 TaskHandle_t fastled_run;
+TaskHandle_t debug_run;
 ////////////////////////////////////////////////////////////////
 // 全局初始化
 WiFiUDP Udp;
+
 #define CONFIG_SETUP 2
 #define NOT_SETUP 1
 #define FINISH_SETUP 0
@@ -122,7 +125,6 @@ BlinkerRGB RGB1(r_name);
 ////////////////////////////////////////////////////////////////
 String eeprom_ssid;
 String eeprom_pwd;
-
 // 灯光状态部分,字面意思
 volatile int8_t oled_state = 1;                             // 通信量,显示屏开关
 volatile int8_t oled_mode = 1;                              // 通信量,显示屏模式 1 正常2 欢迎 3 久坐
@@ -145,7 +147,6 @@ volatile int time_all = 0;     // 通信量
 ////////////////////////////////////////////////////////////////
 LightSet light_set;
 ESPLog esp_log;
-ESPGZIP esp_gzip;
 ////////////////////////////////////////////////////////////////
 // http请求部分,查天气,get
 // #define ARDUINOJSON_USE_LONG_LONG 1
@@ -357,33 +358,35 @@ int http_get(HTTPClient &http)
 }
 void esp32_Http_aqi()
 {
-    HTTPClient httpClient;
-    httpClient.begin(AIR_URL);
-    httpClient.setUserAgent(HTTP_USERAGENT);
-    httpClient.addHeader("charset", "utf-8");
-    int httpCode = http_get(httpClient);
-    esp_log.task_printf("esp32 -> aqi server\n");
-    if (httpCode == HTTP_CODE_OK)
-    {
-        esp_log.task_printf("aqi server -> esp32:\n");
-        DynamicJsonDocument jsonBuffer(2048);
-        deserializeJson(jsonBuffer, httpClient.getStream());
-        JsonObject root = jsonBuffer.as<JsonObject>();
-        const char *category = root["now"]["category"];
-        const char *aqi = root["now"]["aqi"];
-        if (category != NULL && aqi != NULL)
-        {
-            sprintf(aqi_final, "%s", aqi);
-            sprintf(category_final, "%s", category);
-        }
-        esp_log.println("url2 get");
-    }
-    else
-    {
-        esp_log.task_printf("aqi server -/> esp32:\n");
-        esp_log.println(httpCode);
-    }
-    httpClient.end();
+    // HTTPClient httpClient;
+    // httpClient.begin(AIR_URL);
+    // httpClient.setUserAgent(HTTP_USERAGENT);
+    // httpClient.addHeader("charset", "utf-8");
+    // int httpCode = http_get(httpClient);
+    // esp_log.task_printf("esp32 -> aqi server\n");
+    // if (httpCode == HTTP_CODE_OK)
+    // {
+    //     esp_log.task_printf("aqi server -> esp32:\n");
+    //     DynamicJsonDocument jsonBuffer(2048);
+    //     String str = Zlib::ungzipToString(httpClient.getStream());
+    //     esp_log.println(str);
+    //     deserializeJson(jsonBuffer, str);
+    //     JsonObject root = jsonBuffer.as<JsonObject>();
+    //     const char *category = root["now"]["category"];
+    //     const char *aqi = root["now"]["aqi"];
+    //     if (category != NULL && aqi != NULL)
+    //     {
+    //         sprintf(aqi_final, "%s", aqi);
+    //         sprintf(category_final, "%s", category);
+    //     }
+    //     esp_log.println("url2 get");
+    // }
+    // else
+    // {
+    //     esp_log.task_printf("aqi server -/> esp32:\n");
+    //     esp_log.println(httpCode);
+    // }
+    // httpClient.end();
 }
 void esp32_Http_weather()
 {
@@ -395,30 +398,28 @@ void esp32_Http_weather()
     esp_log.task_printf("esp32 -> weather server:\n");
     if (httpCode == HTTP_CODE_OK)
     {
-        // esp_log.task_printf("weather server -> esp32:\n");
-        // DynamicJsonDocument jsonBuffer(2048);
-        // httpClient.getStream()
-        // esp_gzip.ungzip();
-        //esp_log.printf(httpClient.getString().c_str());
-        //deserializeJson(jsonBuffer, httpClient.getStream());
-        
-        // JsonObject root = jsonBuffer.as<JsonObject>();
-        // const char *text = root["now"]["text"];
-        // const char *temp = root["now"]["temp"];
-        // const char *humidity = root["now"]["humidity"];
-        // if (text != NULL)
-        // {
-        //     sprintf(text_final, "%s", text);
-        // }
-        // if (temp != NULL)
-        // {
-        //     sprintf(temp_final, "%s", temp);
-        // }
-        // if (humidity != NULL)
-        // {
-        //     sprintf(humidity_final, "%s", humidity);
-        // }
-        // esp_log.println(text);
+        esp_log.task_printf("weather server -> esp32:\n");
+        DynamicJsonDocument jsonBuffer(2048);
+        // String str = Zlib::ungzipToString(httpClient.getStream());
+        // esp_log.println(str);
+        deserializeJson(jsonBuffer, httpClient.getStream());
+        JsonObject root = jsonBuffer.as<JsonObject>();
+        const char *text = root["now"]["text"];
+        const char *temp = root["now"]["temp"];
+        const char *humidity = root["now"]["humidity"];
+        if (text != NULL)
+        {
+            sprintf(text_final, "%s", text);
+        }
+        if (temp != NULL)
+        {
+            sprintf(temp_final, "%s", temp);
+        }
+        if (humidity != NULL)
+        {
+            sprintf(humidity_final, "%s", humidity);
+        }
+        esp_log.println(text);
     }
     else
     {
@@ -933,13 +934,13 @@ void oledTask(void *xTaskOled) // 显示屏任务
         if (timeinfo.tm_sec % 10 >= 5)
         {
             sprintf(str3, "%s|%s℃ %s", text_final, temp_final, aqi_final);
-            oled_show(str1, str2, str3, hitokoto_final);
+            oled_show(str1, str2, xd_final, hitokoto_final);
         }
         else
         {
             sprintf(str3, "%s|%s%% %s", text_final, humidity_final, category_final);
 #if __has_include("xd.h")
-            oled_show(str1, str2, str3, xd_final);
+            oled_show(str1, str2, xd_final, hitokoto_final);
 #else
             oled_show(str1, str2, str3, hitokoto_final);
 #endif
@@ -951,15 +952,8 @@ void blinkerTask(void *xTaskBlinker) // blinker任务
 {
     while (1)
     {
-        try
-        {
-            Blinker.run();
-            delay(100);
-        }
-        catch (const std::exception &e)
-        {
-            esp_log.error_printf(e.what());
-        }
+        Blinker.run();
+        delay(100);
     }
 }
 void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块监控服务
@@ -973,20 +967,18 @@ void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块�
         xQueuePeek(system_state_queue, &system_state, 100);
         if (system_state == NOT_SETUP) // http是服务端主体业务，由于blinker就一个黑盒，放在自己写的http服务下面
         {
-            if (timeinfo.tm_year <= 100)
+            if (timeinfo.tm_year <= 100 || !strcmp(hitokoto_final, "松花酿酒,春水煎茶。"))
             {
                 esp_log.println("configDNS&Time!");
-                if (millis() > 100000 && !strcmp(hitokoto_final, "松花酿酒,春水煎茶。"))
+                if (millis() > 100000)
                 {
                     oled_show(DEVICE_NAME, "系统错误", "dns配置失败", "正在重启...");
+                    WiFi.disconnect();
+                    delay(300);
+                    timeinfo.tm_year = 0;
                     esp_restart();
                 }
                 configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
-                if (timeinfo.tm_min >= 2)
-                {
-                    oled_show(DEVICE_NAME, "系统错误", "ntp失去连接", "正在重启...");
-                    esp_restart();
-                }
                 if (!getLocalTime(&timeinfo))
                 {
                     continue;
@@ -1031,9 +1023,9 @@ void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块�
         }
     }
 }
-void sendState(const char *host)
+
+void getStatePack(String &pack)
 {
-    Udp.beginPacket(host, ANDROID_PORT); // 配置远端ip地址和端口
     char str1[60];
     char str2[60];
     char str3[60];
@@ -1086,9 +1078,25 @@ void sendState(const char *host)
         color = leds_temp[i].b | leds_temp[i].g << 8 | leds_temp[i].r << 16;
         leds.add(color);
     }
-    serializeJson(response_dto, Udp);
+    serializeJson(response_dto, pack);
+}
+void sendStateToAndroid(const char *host)
+{
+    Udp.beginPacket(host, ANDROID_PORT); // 配置远端ip地址和端口
+    String response_dto = "";
+    getStatePack(response_dto);
+    Udp.print(response_dto);
     Udp.endPacket();
     esp_log.task_printf("state -> UDP\n");
+}
+void sendStateToPC(const char *host)
+{
+    Udp.beginPacket(host, COMPUTER_PORT); // 配置远端ip地址和端口
+    String response_dto = "";
+    getStatePack(response_dto);
+    Udp.print(response_dto);
+    Udp.endPacket();
+    esp_log.task_printf("statePC -> UDP\n");
 }
 void udpTask(void *xTaskUdp)
 {
@@ -1158,7 +1166,8 @@ void udpTask(void *xTaskUdp)
                         {
                             esp_log.task_printf("UDP -> state\n");
                         }
-                        sendState(Udp.remoteIP().toString().c_str());
+                        sendStateToAndroid(Udp.remoteIP().toString().c_str());
+                        sendStateToPC(Udp.remoteIP().toString().c_str());
                     }
                 }
             }
@@ -1169,14 +1178,104 @@ void udpTask(void *xTaskUdp)
         }
     }
 }
+void tcpTask(void *xTaskTcp)
+{
+    WiFiServer TcpServer;
+    WiFiClient TcpClients[MAX_SRV_CLIENTS];
+    TcpServer.begin(ESP32_OLED_PORT);
+    TcpServer.setNoDelay(true);
+    esp_log.print(WiFi.localIP().toString());
+    while (1)
+    {
+        int i = 0;
+        // 有新连接
+        if (TcpServer.hasClient())
+        { // 判断是否有新的client请求进来
+            for (i = 0; i < MAX_SRV_CLIENTS; i++)
+            {
+
+                // 释放旧无效或者断开的client
+                if (!TcpClients[i] || !TcpClients[i].connected())
+                {
+                    if (!TcpClients[i])
+                    {
+                        // TcpClients[i]    判断指定序号的客户端是否有效
+                        TcpClients[i].stop(); // 停止指定客户端的连接
+                    }
+
+                    TcpClients[i] = TcpServer.available(); // 分配最新的client
+                    esp_log.print("1个新的客户端: ");
+                    esp_log.println(i);
+                    break; // 跳出一层for循环
+                }
+            }
+
+            // 当达到最大连接数 无法释放无效的client，需要拒绝连接
+            if (i == MAX_SRV_CLIENTS)
+            {
+                WiFiClient client = TcpServer.available();
+                client.stop();
+                Serial.println("连接被拒绝 ");
+            }
+        }
+
+        // 检测client发过来的数据
+        for (i = 0; i < MAX_SRV_CLIENTS; i++)
+        {
+            if (TcpClients[i] && TcpClients[i].connected())
+            {
+                if (TcpClients[i].available())
+                {
+                    String msg = TcpClients[i].readString();
+                    esp_log.print(msg);
+                    if (msg == "turn_on")
+                    {
+                        esp_log.task_printf("TCP -> miot\n");
+                        miotPowerState("on");
+                    }
+                    else if (msg == "turn_off")
+                    {
+                        esp_log.task_printf("TCP -> miot\n");
+                        miotPowerState("off");
+                    }
+                    else if (msg == "computer")
+                    {
+                        esp_log.task_printf("TCP -> miot\n");
+                        miotMode(BLINKER_CMD_MIOT_COMPUTER);
+                    }
+                    else if (msg == "normal_light")
+                    {
+                        esp_log.task_printf("TCP -> miot\n");
+                        miotMode(BLINKER_CMD_MIOT_DAY);
+                    }
+                    else if (msg == "computer?")
+                    {
+                        if (rgb_running == 1)
+                        {
+                            TcpClients[i].print("computer->Y");
+                        }
+                        else
+                        {
+                            TcpClients[i].print("computer->N");
+                        }
+                    }
+                }
+            }
+        }
+        delay(10);
+    }
+}
 void udpConfigTask(void *xTaskConfigUdp)
 {
+
     if (Udp.begin(ESP32_OLED_PORT))
     { // 启动Udp监听服务
         esp_log.println("监听成功");
         // 打印本地的ip地址，在UDP工具中会使用到
         //  WiFi.localIP().toString().c_str()用于将获取的本地IP地址转化为字符串
         esp_log.printf("现在收听IP：%s, UDP端口：%d\n", WiFi.localIP().toString().c_str(), ESP32_OLED_PORT);
+        sendStateToAndroid("255.255.255.255");
+        sendStateToPC("255.255.255.255");
     }
     else
     {
@@ -1586,15 +1685,18 @@ void debugTask(void *xTaskDebug) // debug...
         heap_caps_check_integrity_all(true);
         esp_log.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
         esp_log.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
+        
         esp_log.printf("rgb:%d\n", uxTaskGetStackHighWaterMark(rgb_run));
         esp_log.printf("sit:%d\n", uxTaskGetStackHighWaterMark(sitclock_run));
         esp_log.printf("oled:%d\n", uxTaskGetStackHighWaterMark(oled_run));
         esp_log.printf("blinker:%d\n", uxTaskGetStackHighWaterMark(blinker_run));
         esp_log.printf("http:%d\n", uxTaskGetStackHighWaterMark(http_run));
         esp_log.printf("udp:%d\n", uxTaskGetStackHighWaterMark(udp_run));
+        esp_log.printf("tcp:%d\n", uxTaskGetStackHighWaterMark(tcp_run));
         esp_log.printf("rgbc:%d\n", uxTaskGetStackHighWaterMark(rgbChange_run));
         esp_log.printf("button:%d\n", uxTaskGetStackHighWaterMark(button_run));
         esp_log.printf("fastled:%d\n", uxTaskGetStackHighWaterMark(fastled_run));
+        esp_log.printf("debug:%d\n", uxTaskGetStackHighWaterMark(debug_run));
         esp_log.println("/////////////////////////////////////////////");
         delay(10000);
     }
@@ -1606,7 +1708,6 @@ void setup()
     int system_state = NOT_SETUP;
     xQueueOverwrite(system_state_queue, &system_state);
     esp_log.setup();
-    esp_gzip.setup();
     EEPROM_setup();
     const char *ssid = eeprom_ssid.c_str(); // 定义一个字符串(指针定义法)
     const char *password = eeprom_pwd.c_str();
@@ -1626,6 +1727,9 @@ void setup()
     u8g2.enableUTF8Print();
     oled_show(DEVICE_NAME, DEVICE_SUB_NAME, "搜索wifi中...", "初始化灯带...");
     WiFi.mode(WIFI_STA);
+    IPAddress primaryDNS(114, 114, 114, 114); // 设置主DNS服务器
+    IPAddress secondaryDNS(19, 29, 29, 29);   // 设置备用DNS服务器
+    WiFi.config(IPAddress(0, 0, 0, 0), IPAddress(0, 0, 0, 0), IPAddress(0, 0, 0, 0), primaryDNS, secondaryDNS);
     WiFi.begin(ssid, password);
     // WiFi.begin(SSID, PASSWORD);
     xTaskCreatePinnedToCore(buttonConfigTask, "buttonConfigTask", 4096, NULL, 2, &button_config_run, 0);
@@ -1713,14 +1817,16 @@ void setup()
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
     xTaskCreatePinnedToCore(oledTask, "oledTask", 4096, NULL, 2, &oled_run, 0);
     xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 20480, NULL, 2, &blinker_run, 0);
-    xTaskCreatePinnedToCore(httpTask, "httpTask", 7168, NULL, 0, &http_run, 0);
-    xTaskCreatePinnedToCore(udpTask, "udpTask", 7168, NULL, 0, &udp_run, 0);
+    xTaskCreatePinnedToCore(httpTask, "httpTask", 20480, NULL, 0, &http_run, 0);
+    xTaskCreatePinnedToCore(udpTask, "udpTask", 7168, NULL, 2, &udp_run, 0);
+    xTaskCreatePinnedToCore(tcpTask, "tcpTask", 7168, NULL, 2, &tcp_run, 0);
     xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 3072, NULL, 3, &rgbChange_run, 1); // 请不要动,动了就寄-以最高优先级运行
     xTaskCreatePinnedToCore(buttonTask, "buttonTask", 4096, NULL, 2, &button_run, 0);
     xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 3, &fastled_run, 1);
-    // xTaskCreatePinnedToCore(debugTask, "debugTask", 2048, NULL, 3, NULL, 0);
+    // xTaskCreatePinnedToCore(debugTask, "debugTask", 2048, NULL, 3, &debug_run, 0);
 }
 void loop()
 {
+    esp_log.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
     delay(5000); // 踢看门狗,loop本质上也是freertos中的一个任务
 }

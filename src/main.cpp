@@ -34,25 +34,30 @@ esp_EEPROM 0-1024自定义
 #include "Wire.h"                     //U8g2.h依赖
 #include "freertos/FreeRTOS.h"
 #define DEST_FS_USES_LITTLEFS
-#include "WiFi.h"             //Blinker.h依赖
-#include "ESPmDNS.h"          //Blinker.h依赖
-#include "FS.h"               //Blinker.h依赖
-#include "SPIFFS.h"           //Blinker.h依赖
-#include "Ticker.h"           //Blinker.h依赖
-#include "Update.h"           //Blinker.h依赖
-#include "WiFiClientSecure.h" //Blinker.h依赖
-#include "EEPROM.h"           //Blinker.h依赖
-#define BLINKER_PRINT Serial  // Blinker.h依赖
-#define BLINKER_WIFI          // Blinker.h依赖
+#include "WiFi.h"
+#include "WiFiClientSecure.h"
+#include "EEPROM.h"
+#define USE_BLINKER // 是否启用小爱同学扩展支持
+#ifdef USE_BLINKER
+#include "ESPmDNS.h"         //Blinker.h依赖
+#include "FS.h"              //Blinker.h依赖
+#include "SPIFFS.h"          //Blinker.h依赖
+#include "Ticker.h"          //Blinker.h依赖
+#include "Update.h"          //Blinker.h依赖
+#define BLINKER_PRINT Serial // Blinker.h依赖
+#define BLINKER_WIFI         // Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #define BLINKER_WITHOUT_SSL
 #define BLINKER_NO_LOGO
+#include "Blinker.h"
+#else
+#include "ArduinoJson.h"
+#endif
 #include "HTTPClient.h"
 #include "FastLED.h"
 #include "AsyncUDP.h"
 #include "U8g2lib.h"
 #include "esp_task_wdt.h" //下面是和风天气的api,api的key手动再申请罢,一天3000次
-#include "Blinker.h"
 #define HTTP_USERAGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
 #define WEATHER_URL "https://devapi.qweather.com/v7/weather/now?location=xxx&key=xxx&gzip=n"
 #define AIR_URL "https://devapi.qweather.com/v7/air/now?location=xxx&key=xxx&gzip=n"
@@ -116,6 +121,7 @@ const long gmtOffset_sec = 8 * 3600;
 const int daylightOffset_sec = 0;
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE, /* clock=*/13, /* data=*/14); // 定义u8g2
 ////////////////////////////////////////////////////////////////
+#ifdef USE_BLINKER
 // blinker注册
 char b_name[32] = "btn-abc";
 char n_name[32] = "num-abc";
@@ -123,6 +129,7 @@ char r_name[32] = "col-6ok";
 BlinkerButton Button1(b_name);
 BlinkerNumber Number1(n_name);
 BlinkerRGB RGB1(r_name);
+#endif
 ////////////////////////////////////////////////////////////////
 String eeprom_ssid;
 String eeprom_pwd;
@@ -148,6 +155,12 @@ volatile int time_all = 0;     // 通信量
 ////////////////////////////////////////////////////////////////
 LightSet light_set;
 ESPLog esp_log;
+struct AuthPack
+{
+    const char *ssid;
+    const char *password;
+    const char *auth;
+};
 ////////////////////////////////////////////////////////////////
 // http请求部分,查天气,get
 // #define ARDUINOJSON_USE_LONG_LONG 1
@@ -549,6 +562,7 @@ void rgb1_callback(uint8_t r_value, uint8_t g_value, uint8_t b_value, uint8_t br
     light_change = 1;
     mode = 3;
 }
+#ifdef USE_BLINKER
 void BlinkerDataRead(const String &data)
 {
     BLINKER_LOG("Blinker readString: ", data);
@@ -559,6 +573,7 @@ void BlinkerDataRead(const String &data)
 
     Blinker.print("millis", BlinkerTime);
 }
+#endif
 void rgbScreenTask(void *xTaskRgbScreen) // 流光溢彩任务
 {
     uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;
@@ -645,9 +660,12 @@ void rgb_task_shutdown()
 ////////////////////////////////////////////////////////////////
 void miotPowerState(const String &state)
 {
+#ifdef USE_BLINKER
     BLINKER_LOG("need set power state: ", state);
-
-    if (state == BLINKER_CMD_ON)
+    BlinkerMIOT.powerState(state);
+    BlinkerMIOT.print();
+#endif
+    if (state == "on")
     {
         light_on = 1;
         oled_state = 1;
@@ -656,10 +674,8 @@ void miotPowerState(const String &state)
         mode = 1; // 默认日光
         on_sitclock();
         light_change = 1;
-        BlinkerMIOT.powerState("on");
-        BlinkerMIOT.print();
     }
-    else if (state == BLINKER_CMD_OFF)
+    else if (state == "off")
     {
         light_set.reset();
         rgb_task_shutdown();
@@ -669,22 +685,18 @@ void miotPowerState(const String &state)
         oled_state = 0;
         light_on = 0;
         off_sitclock();
-        BlinkerMIOT.powerState("off");
-        BlinkerMIOT.print();
     }
 }
 void miotColor(int32_t color)
 {
     esp_log.task_printf("miot -> color change\n");
     rgb_task_shutdown();
-    BLINKER_LOG("need set color: ", color);
     light_on = 1; // 强制开启
     light_now = color;
     uint8_t colorR = color >> 16 & 0xFF;
     uint8_t colorG = color >> 8 & 0xFF;
     uint8_t colorB = color & 0xFF;
     esp_log.printf("set color: %d\n", color);
-    BLINKER_LOG("colorR: ", colorR, ", colorG: ", colorG, ", colorB: ", colorB);
     light_color_r[light_set.get_num()] = colorR;
     light_color_g[light_set.get_num()] = colorG;
     light_color_b[light_set.get_num()] = colorB;
@@ -700,30 +712,47 @@ void miotColor(int32_t color)
     on_sitclock();
     light_change = 1;
     mode = 3;
+#ifdef USE_BLINKER
+    BLINKER_LOG("need set color: ", color);
+    BLINKER_LOG("colorR: ", colorR, ", colorG: ", colorG, ", colorB: ", colorB);
     BlinkerMIOT.color(color);
     BlinkerMIOT.print();
+#endif
 }
 void miotBright(const String &bright)
 {
     esp_log.task_printf("miot -> bright change\n");
     light_on = 1; // 强制开启
     mi_light_bright = bright.toInt();
-    BLINKER_LOG("need set brightness: ", bright);
+
     light_brightness = bright.toInt() / 2 + bright.toInt() * 2;
     mode = 3;
     light_change = 1;
     on_sitclock();
     EEPROM_rgb_memory_commit();
+#ifdef USE_BLINKER
+    BLINKER_LOG("need set brightness: ", bright);
     BLINKER_LOG("now set brightness: ", light_brightness);
     BlinkerMIOT.brightness(light_brightness);
     BlinkerMIOT.print();
-    // oled_show("", "brightness", "change");
+#endif
 }
 void miotMode(uint8_t mode_mi)
 {
+#ifdef USE_BLINKER
     BLINKER_LOG("need set mode: ", mode_mi);
     BlinkerMIOT.mode(mode_mi);
     BlinkerMIOT.print();
+#else
+#define BLINKER_CMD_MIOT_DAY 0
+#define BLINKER_CMD_MIOT_NIGHT 1
+#define BLINKER_CMD_MIOT_COLOR 2
+#define BLINKER_CMD_MIOT_WARMTH 3
+#define BLINKER_CMD_MIOT_TV 4
+#define BLINKER_CMD_MIOT_READING 5
+#define BLINKER_CMD_MIOT_COMPUTER 6
+#endif
+
     mi_mode = mode_mi; // 用于回调的模式
     if (mode_mi == BLINKER_CMD_MIOT_DAY)
     {
@@ -808,9 +837,10 @@ void miotMode(uint8_t mode_mi)
         mode = 0;
         oled_state = 0;
         light_on = 0;
-        // 向udp工具发送消息
+#ifdef USE_BLINKER
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
+#endif
     }
     else if (mode_mi == BLINKER_CMD_MIOT_READING)
     {
@@ -854,6 +884,7 @@ void miotMode(uint8_t mode_mi)
         on_sitclock();
     }
 }
+#ifdef USE_BLINKER // blinker独占函数部分
 void miotQuery(int32_t queryCode)
 {
     BLINKER_LOG("MIOT Query codes: ", queryCode);
@@ -903,6 +934,25 @@ void miotQuery(int32_t queryCode)
         break;
     }
 }
+void blinkerTask(void *xTaskBlinker) // blinker任务
+{
+    AuthPack *authPack = (AuthPack *)xTaskBlinker;
+    Blinker.begin(authPack->auth, authPack->ssid, authPack->password);
+    Blinker.attachData(BlinkerDataRead);
+    Button1.attach(button1_callback);
+    RGB1.attach(rgb1_callback);
+    BlinkerMIOT.attachPowerState(miotPowerState);
+    BlinkerMIOT.attachColor(miotColor);
+    BlinkerMIOT.attachMode(miotMode);
+    BlinkerMIOT.attachBrightness(miotBright);
+    BlinkerMIOT.attachQuery(miotQuery);
+    while (1)
+    {
+        Blinker.run();
+        delay(100);
+    }
+}
+#endif
 void oledTask(void *xTaskOled) // 显示屏任务
 {
     while (1)
@@ -918,7 +968,13 @@ void oledTask(void *xTaskOled) // 显示屏任务
         strftime(str_clockinfo, 100, "%H:%M:%S", &timeinfo);
         if (rgb_running == 0)
         {
-            if (WiFi.status() == WL_CONNECTED && Blinker.connected())
+            bool online_state = false;
+#ifdef USE_BLINKER
+            online_state = WiFi.status() == WL_CONNECTED && Blinker.connected();
+#else
+            online_state = WiFi.status() == WL_CONNECTED;
+#endif
+            if (online_state)
             {
                 sprintf(str2, "%s 在线", str_clockinfo);
             }
@@ -949,14 +1005,7 @@ void oledTask(void *xTaskOled) // 显示屏任务
         delay(300);
     }
 }
-void blinkerTask(void *xTaskBlinker) // blinker任务
-{
-    while (1)
-    {
-        Blinker.run();
-        delay(100);
-    }
-}
+
 void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块监控服务
 {
     int system_state = NOT_SETUP;
@@ -1037,7 +1086,13 @@ void getStatePack(String &pack)
     strftime(str_clockinfo, 100, "%H:%M:%S", &timeinfo);
     if (rgb_running == 0)
     {
-        if (WiFi.status() == WL_CONNECTED && Blinker.connected())
+        bool online_state = false;
+#ifdef USE_BLINKER
+        online_state = WiFi.status() == WL_CONNECTED && Blinker.connected();
+#else
+        online_state = WiFi.status() == WL_CONNECTED;
+#endif
+        if (online_state)
         {
             sprintf(str2, "%s 在线", str_clockinfo);
         }
@@ -1686,7 +1741,7 @@ void debugTask(void *xTaskDebug) // debug...
         heap_caps_check_integrity_all(true);
         esp_log.printf("Freeheap:%d\n", xPortGetFreeHeapSize());
         esp_log.printf("FreeMinheap:%d\n", xPortGetMinimumEverFreeHeapSize());
-        
+
         esp_log.printf("rgb:%d\n", uxTaskGetStackHighWaterMark(rgb_run));
         esp_log.printf("sit:%d\n", uxTaskGetStackHighWaterMark(sitclock_run));
         esp_log.printf("oled:%d\n", uxTaskGetStackHighWaterMark(oled_run));
@@ -1714,13 +1769,11 @@ void setup()
     const char *password = eeprom_pwd.c_str();
     const char *auth = AUTH_KEY;
 #ifdef DEBUG
-    if (ESPLOG_LEVEL < ESPLOG_INFO)
-    {
-    }
-    else
-    {
-        BLINKER_DEBUG.stream(Serial);
-    }
+#if ESPLOG_LEVEL >= ESPLOG_INFO
+#ifdef USE_BLINKER
+    BLINKER_DEBUG.stream(Serial);
+#endif
+#endif
     esp_log.set_log_out_level(ESPLOG_LEVEL);
 #endif
     esp_log.println("bszydxh esp32 start!");
@@ -1804,20 +1857,17 @@ void setup()
         vTaskDelete(udp_config_run);
     }
     oled_show(DEVICE_NAME, DEVICE_SUB_NAME, "连接成功", "加载系统中...");
-    Blinker.begin(auth, ssid, password);
-    // Blinker.begin(auth, SSID, PASSWORD);
     vTaskDelete(button_config_run);
-    Blinker.attachData(BlinkerDataRead);
-    Button1.attach(button1_callback);
-    RGB1.attach(rgb1_callback);
-    BlinkerMIOT.attachPowerState(miotPowerState);
-    BlinkerMIOT.attachColor(miotColor);
-    BlinkerMIOT.attachMode(miotMode);
-    BlinkerMIOT.attachBrightness(miotBright);
-    BlinkerMIOT.attachQuery(miotQuery);
+
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
     xTaskCreatePinnedToCore(oledTask, "oledTask", 4096, NULL, 2, &oled_run, 0);
-    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 48000, NULL, 2, &blinker_run, 0);
+#ifdef USE_BLINKER
+    AuthPack authPack;
+    authPack.auth = auth;
+    authPack.ssid = ssid;
+    authPack.password = password;
+    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 48000, (void *)&authPack, 2, &blinker_run, 0);
+#endif
     xTaskCreatePinnedToCore(httpTask, "httpTask", 20480, NULL, 0, &http_run, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 7168, NULL, 2, &udp_run, 0);
     xTaskCreatePinnedToCore(tcpTask, "tcpTask", 7168, NULL, 2, &tcp_run, 0);

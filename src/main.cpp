@@ -968,20 +968,17 @@ void oledTask(void *xTaskOled) // 显示屏任务
         strftime(str_clockinfo, 100, "%H:%M:%S", &timeinfo);
         if (rgb_running == 0)
         {
-            bool online_state = false;
+            String online_state = "离线";
 #ifdef USE_BLINKER
-            online_state = WiFi.status() == WL_CONNECTED && Blinker.connected();
+            online_state = WiFi.status() == WL_CONNECTED ? "在线" : "离线";
+            if (WiFi.status() == WL_CONNECTED && Blinker.connected())
+            {
+                online_state = "在线+";
+            }
 #else
-            online_state = WiFi.status() == WL_CONNECTED;
+            online_state = WiFi.status() == WL_CONNECTED ? "在线" : "离线";
 #endif
-            if (online_state)
-            {
-                sprintf(str2, "%s 在线", str_clockinfo);
-            }
-            else
-            {
-                sprintf(str2, "%s 离线", str_clockinfo);
-            }
+            sprintf(str2, "%s %s", str_clockinfo, online_state);
         }
         else
         {

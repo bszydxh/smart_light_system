@@ -46,6 +46,7 @@ esp_EEPROM 0-1024自定义
 #define BLINKER_WIFI          // Blinker.h依赖
 #define BLINKER_MIOT_LIGHT
 #define BLINKER_WITHOUT_SSL
+#define BLINKER_NO_LOGO
 #include "HTTPClient.h"
 #include "FastLED.h"
 #include "AsyncUDP.h"
@@ -75,7 +76,7 @@ esp_EEPROM 0-1024自定义
 // 定义五行后把下面 #include "config.cpp" 去掉
 #include "esp_heap_caps.h"
 #define DEBUG                   // 调试模式
-#define ESPLOG_LEVEL ESPLOG_TASK // 调试等级
+#define ESPLOG_LEVEL ESPLOG_ALL // 调试等级
 ////////////////////////////////////////////////////////////////
 // 灯光初始化定义
 #define NUM_LEDS 120
@@ -548,7 +549,7 @@ void rgb1_callback(uint8_t r_value, uint8_t g_value, uint8_t b_value, uint8_t br
     light_change = 1;
     mode = 3;
 }
-void dataRead(const String &data)
+void BlinkerDataRead(const String &data)
 {
     BLINKER_LOG("Blinker readString: ", data);
 
@@ -1091,12 +1092,12 @@ void sendStateToAndroid(const char *host)
 }
 void sendStateToPC(const char *host)
 {
-    Udp.beginPacket(host, COMPUTER_PORT); // 配置远端ip地址和端口
-    String response_dto = "";
-    getStatePack(response_dto);
-    Udp.print(response_dto);
-    Udp.endPacket();
-    esp_log.task_printf("statePC -> UDP\n");
+    // Udp.beginPacket(host, COMPUTER_PORT); // 配置远端ip地址和端口
+    // String response_dto = "";
+    // getStatePack(response_dto);
+    // Udp.print(response_dto);
+    // Udp.endPacket();
+    // esp_log.task_printf("statePC -> UDP\n");
 }
 void udpTask(void *xTaskUdp)
 {
@@ -1806,7 +1807,7 @@ void setup()
     Blinker.begin(auth, ssid, password);
     // Blinker.begin(auth, SSID, PASSWORD);
     vTaskDelete(button_config_run);
-    Blinker.attachData(dataRead);
+    Blinker.attachData(BlinkerDataRead);
     Button1.attach(button1_callback);
     RGB1.attach(rgb1_callback);
     BlinkerMIOT.attachPowerState(miotPowerState);
@@ -1816,7 +1817,7 @@ void setup()
     BlinkerMIOT.attachQuery(miotQuery);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
     xTaskCreatePinnedToCore(oledTask, "oledTask", 4096, NULL, 2, &oled_run, 0);
-    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 20480, NULL, 2, &blinker_run, 0);
+    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 48000, NULL, 2, &blinker_run, 0);
     xTaskCreatePinnedToCore(httpTask, "httpTask", 20480, NULL, 0, &http_run, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 7168, NULL, 2, &udp_run, 0);
     xTaskCreatePinnedToCore(tcpTask, "tcpTask", 7168, NULL, 2, &tcp_run, 0);

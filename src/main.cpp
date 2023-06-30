@@ -1863,13 +1863,13 @@ void setup()
     authPack.auth = auth;
     authPack.ssid = ssid;
     authPack.password = password;
-    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 48000, (void *)&authPack, 2, &blinker_run, 0);
+    xTaskCreatePinnedToCore(blinkerTask, "blinkerTask", 24000, (void *)&authPack, 2, &blinker_run, 0);
 #endif
     xTaskCreatePinnedToCore(httpTask, "httpTask", 20480, NULL, 0, &http_run, 0);
     xTaskCreatePinnedToCore(udpTask, "udpTask", 7168, NULL, 2, &udp_run, 0);
     xTaskCreatePinnedToCore(tcpTask, "tcpTask", 7168, NULL, 2, &tcp_run, 0);
-    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 3072, NULL, 3, &rgbChange_run, 1); // 请不要动,动了就寄-以最高优先级运行
     xTaskCreatePinnedToCore(buttonTask, "buttonTask", 4096, NULL, 2, &button_run, 0);
+    xTaskCreatePinnedToCore(rgbChangeTask, "rgbChangeTask", 3072, NULL, 3, &rgbChange_run, 1); // 请不要动,动了就寄-以最高优先级运行
     xTaskCreatePinnedToCore(fastledTask, "fastledTask", 2048, NULL, 3, &fastled_run, 1);
     // xTaskCreatePinnedToCore(debugTask, "debugTask", 2048, NULL, 3, &debug_run, 0);
 }

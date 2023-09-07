@@ -1,0 +1,35 @@
+#https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+
+Language: Cpp
+# 缩进宽度
+IndentWidth: 2
+# 连续赋值时，对齐所有等号
+AlignConsecutiveAssignments: true
+
+# 连续声明时，对齐所有声明的变量名
+AlignConsecutiveDeclarations: true
+
+# 连续声明时，对齐所有宏定义
+AlignConsecutiveMacros: true
+
+BreakBeforeBraces: Allman
+
+# 允许排序#include
+SortIncludes: false
+
+# 允许排序 using 声明
+SortUsingDeclarations: false
+
+IndentPPDirectives: BeforeHash
+
+#如果函数调用或大括号初始值设定项列表无法容纳在一行中，则允许将所有参数放入下一行，即使 BinPackArguments是false。
+AllowAllArgumentsOnNextLine: false
+
+#如果false，函数调用的参数要么全部在同一行，要么各占一行。
+BinPackArguments: false
+
+# 如果false，则函数声明或函数定义的参数将全部位于同一行或各占一行。
+BinPackParameters: false
+# 每行字符的限制，0表示没有限制
+ColumnLimit: 88
+# ShortFunctionStyle: All

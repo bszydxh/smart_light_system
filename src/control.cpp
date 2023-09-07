@@ -122,12 +122,16 @@ void auroraMode(uint8_t mode_aurora)
     esp_log.println("UDP数据发送成功");
 
     rgb_task_shutdown();
+    if (!get_context(context))
+    {
+      return;
+    }
     context.light_on   = 1;
     context.oled_state = 1;
-    on_sitclock();
-    context.mode = 3;
+    context.mode       = 3;
     set_context(context);
     xSemaphoreGive(led_semaphore);
+    on_sitclock();
   }
   else if (mode_aurora == BLINKER_CMD_MIOT_NIGHT)
   {

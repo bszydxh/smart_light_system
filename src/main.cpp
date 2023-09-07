@@ -88,10 +88,10 @@ void rgbChangeTask(void *xTaskRgbChange) // 灯条任务
       {
         if (xSemaphoreTake(rgb_semaphore, 100) == pdTRUE)
         {
-          rgb_task_run();
-          esp_log.println("light");
           context.mode = 2;
           set_context(context);
+          rgb_task_run();
+          esp_log.println("light");
           continue;
         }
         if (context.mode == 1 || context.mode == 3) // 换亮度/色彩/////mode2悬空给rgb
@@ -375,10 +375,11 @@ bool get_context(SysContext &Context)
 }
 void set_context(SysContext &Context)
 {
-  esp_log.printf("set_context|light_on:%d|mode:%d|oled_mode:%d|oled_state:%d\n",
+  esp_log.printf("set_context|light_on:%d|mode:%d|oled_mode:%d|oled_state:%d|rgb_running:%d\n",
                  Context.light_on,
                  Context.mode,
                  Context.oled_mode,
-                 Context.oled_state);
+                 Context.oled_state,
+                 Context.rgb_running);
   xQueueOverwrite(sys_context_queue, &Context);
 }

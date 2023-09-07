@@ -140,6 +140,7 @@ void rgb1_callback(uint8_t r_value,
 }
 void blinkerTask(void *xTaskBlinker) // blinker任务
 {
+  int loopCount = 0;
 #ifdef USE_BLINKER
   AuthPack *authPack = (AuthPack *)xTaskBlinker;
   Blinker.begin(authPack->auth, authPack->ssid, authPack->password);
@@ -159,21 +160,27 @@ void blinkerTask(void *xTaskBlinker) // blinker任务
 
   while (1)
   {
+    loopCount++;
 #ifdef USE_BLINKER
     Blinker.run();
-    // SysContext context;
-    // if (!get_context(context))
-    // {
-    //   continue;
-    // }
-    // if (Blinker.connected())
-    // {
-    //   context.is_mqtt_connect = true;
-    // }
-    // else
-    // {
-    //   context.is_mqtt_connect = false;
-    // }
+    if (loopCount % 10 == 0)
+    {
+      SysContext context;
+      if (!get_context(context))
+      {
+        continue;
+      }
+      if (Blinker.connected())
+      {
+        context.is_mqtt_connect = true;
+      }
+      else
+      {
+        context.is_mqtt_connect = false;
+      }
+      set_context(context);
+    }
+
 #endif
     delay(100);
   }

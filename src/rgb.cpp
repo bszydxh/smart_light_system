@@ -72,12 +72,6 @@ void rgbScreenTask(void *xTaskRgbScreen) // 流光溢彩任务
 }
 void rgb_task_run()
 {
-  esp_log.error_printf("/////////////////////////////////");
-  esp_log.error_printf("/////////////////////////////////");
-  esp_log.error_printf("/////////////////////////////////");
-  esp_log.error_printf("/////////////////////////////////");
-  esp_log.error_printf("/////////////////////////////////");
-  esp_log.error_printf("/////////////////////////////////");
   SysContext context;
   if (!get_context(context))
   {

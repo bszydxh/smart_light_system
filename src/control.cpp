@@ -243,9 +243,9 @@ void auroraMode(uint8_t mode_aurora)
     context.light_on   = 1;
     context.oled_state = 1;
     delay(300);
-    set_context(context);
     xSemaphoreGive(rgb_semaphore);
     xSemaphoreGive(led_semaphore);
+    set_context(context);
     esp_log.print("Ada\n");
     Udp.beginPacket("255.255.255.255", COMPUTER_PORT); // 配置远端ip地址和端口
     Udp.print("color");                                // 把数据写入发送缓冲区

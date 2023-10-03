@@ -40,28 +40,31 @@ esp_EEPROM 0-1024自定义
 #include "socket.h"
 #include "button.h"
 #include "socket.h"
+//aab
+//babb
+//abaab
 
 #if __has_include("xd.h") // 非c++官方用法，xd.h是项目作者自己的魔改部分，看情况删
-  #include "xd.h"
+#include "xd.h"
 #endif
-struct tm timeinfo;  // 定义时间信息
-int       retry = 0; // 记录重试次数,全局变量
-WiFiUDP   Udp;
+struct tm timeinfo; // 定义时间信息
+int retry = 0;      // 记录重试次数,全局变量
+WiFiUDP Udp;
 
-QueueHandle_t     system_state_queue;
-QueueHandle_t     sys_context_queue;
+QueueHandle_t system_state_queue;
+QueueHandle_t sys_context_queue;
 SemaphoreHandle_t led_semaphore;
 SemaphoreHandle_t rgb_semaphore;
-SysContext        context;
-TaskHandle_t      rgbChange_run;
-TaskHandle_t      fastled_run;
-TaskHandle_t      debug_run;
+SysContext context;
+TaskHandle_t rgbChange_run;
+TaskHandle_t fastled_run;
+TaskHandle_t debug_run;
 
-const char *ntpServer1         = "ntp.ntsc.ac.cn"; // 时间服务器1
-const char *ntpServer2         = "cn.ntp.org.cn";  // 时间服务器2
-const char *ntpServer3         = "ntp.aliyun.com"; // 时间服务器3
-const long  gmtOffset_sec      = 8 * 3600;         // 时区
-const int   daylightOffset_sec = 0;                // 夏令时偏移
+const char *ntpServer1 = "ntp.ntsc.ac.cn"; // 时间服务器1
+const char *ntpServer2 = "cn.ntp.org.cn";  // 时间服务器2
+const char *ntpServer3 = "ntp.aliyun.com"; // 时间服务器3
+const long gmtOffset_sec = 8 * 3600;       // 时区
+const int daylightOffset_sec = 0;          // 夏令时偏移
 
 void rgbChangeTask(void *xTaskRgbChange) // 灯条任务
 {
@@ -213,20 +216,21 @@ void debugTask(void *xTaskDebug) // debug...
 }
 void setup()
 {
-  leds_queue         = xQueueCreate(1, sizeof(LedState)); // 创建led队列
+  WiFi.disconnect(true);
+  leds_queue = xQueueCreate(1, sizeof(LedState)); // 创建led队列
   system_state_queue = xQueueCreate(1, sizeof(int));
-  sys_context_queue  = xQueueCreate(1, sizeof(SysContext));
-  led_semaphore      = xSemaphoreCreateBinary();
-  rgb_semaphore      = xSemaphoreCreateBinary();
-  int system_state   = NOT_SETUP;
+  sys_context_queue = xQueueCreate(1, sizeof(SysContext));
+  led_semaphore = xSemaphoreCreateBinary();
+  rgb_semaphore = xSemaphoreCreateBinary();
+  int system_state = NOT_SETUP;
   xQueueOverwrite(system_state_queue, &system_state);
   SysContext context;
   set_context(context);
   esp_log.setup();
   EEPROM_setup();
-  const char *ssid     = eeprom_ssid.c_str(); // 定义一个字符串(指针定义法)
+  const char *ssid = eeprom_ssid.c_str(); // 定义一个字符串(指针定义法)
   const char *password = eeprom_pwd.c_str();
-  const char *auth     = AUTH_KEY;
+  const char *auth = AUTH_KEY;
 #ifdef DEBUG
   esp_log.set_log_out_level(ESPLOG_LEVEL);
 #endif
@@ -314,7 +318,7 @@ void setup()
                             &udp_config_run,
                             0);
     char str_connect[100];
-    int  time = 0;
+    int time = 0;
     while (system_state == CONFIG_SETUP)
     {
       sprintf(str_connect, "%d台设备已连接", WiFi.softAPgetStationNum());
@@ -338,8 +342,8 @@ void setup()
   xTaskCreatePinnedToCore(oledTask, "oledTask", 4096, NULL, 2, &oled_run, 0);
 #ifdef USE_BLINKER
   AuthPack authPack;
-  authPack.auth     = auth;
-  authPack.ssid     = ssid;
+  authPack.auth = auth;
+  authPack.ssid = ssid;
   authPack.password = password;
   xTaskCreatePinnedToCore(blinkerTask,
                           "blinkerTask",

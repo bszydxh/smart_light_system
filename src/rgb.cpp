@@ -4,15 +4,15 @@
 #include "rgb.h"
 
 int8_t rgb_running = 0; // 信号量,控制流光溢彩
-int rgb_screen_on = 0; // 逻辑上 rgb_screen ~= light_change 但light>rgb>mode//信号量
-int          rgb_frist_running = 0;
+int rgb_screen_on = 0;  // 逻辑上 rgb_screen ~= light_change 但light>rgb>mode//信号量
+int rgb_frist_running = 0;
 TaskHandle_t rgb_run;
 
 void rgbScreenTask(void *xTaskRgbScreen) // 流光溢彩任务
 {
-  uint8_t  prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;
+  uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;
   LedState leds_rgb_mode_state;
-  CRGB    *leds_rgb_mode;
+  CRGB *leds_rgb_mode = leds_rgb_mode_state.leds;
   while (1)
   {
     // 魔法包结构 Ada+校验码+rgb数据
@@ -54,7 +54,7 @@ void rgbScreenTask(void *xTaskRgbScreen) // 流光溢彩任务
       g = Serial.read();
       while (!Serial.available())
         ;
-      b                  = Serial.read();
+      b = Serial.read();
       leds_rgb_mode[j].r = r;
       leds_rgb_mode[j].g = g;
       leds_rgb_mode[j].b = b;

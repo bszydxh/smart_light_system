@@ -1,3 +1,7 @@
 [submodule "lib/blinker"]
 	path = lib/blinker
 	url = https://github.com/blinker-iot/blinker-library.git
+
+[submodule "lib/ArduinoUZlib"]
+	path = lib/ArduinoUZlib
+	url = https://github.com/tignioj/ArduinoUZlib.git

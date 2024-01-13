@@ -10,3 +10,5 @@ src/password.cpp
 .vscode/launch.json
 .vscode/settings.json
 .vscode/extensions.json
+.clang-format
+xd*

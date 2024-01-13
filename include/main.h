@@ -33,7 +33,16 @@
 #define DEST_FS_USES_LITTLEFS
 
 #define DEBUG                   // 调试模式
-#define ESPLOG_LEVEL ESPLOG_ALL // 调试等级
+/*调试等级
+ESPLOG_ALL 
+ESPLOG_DEBUG 
+ESPLOG_INFO 
+ESPLOG_TASK 
+ESPLOG_WARN 
+ESPLOG_ERROR 
+ESPLOG_OFF 
+*/
+#define ESPLOG_LEVEL ESPLOG_OFF // 调试等级
 
 // 灯光初始化定义
 #define NUM_LEDS 120

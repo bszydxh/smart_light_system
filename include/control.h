@@ -1,8 +1,6 @@
 #ifndef __CONTROL_H__
 #define __CONTROL_H__
 
-
-
 void auroraSitClockBlink(int blink_time);
 void auroraPowerState(const String &state);
 void auroraColor(int32_t color);

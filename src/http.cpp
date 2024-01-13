@@ -51,7 +51,7 @@ void esp32_Http_aqi()
   // }
   // httpClient.end();
 }
-void esp32_Http_weather(HTTPClient& httpClient)
+void esp32_Http_weather(HTTPClient& httpClient,DynamicJsonDocument& jsonBuffer)
 {
   httpClient.begin(WEATHER_URL);
   httpClient.setUserAgent(HTTP_USERAGENT);
@@ -61,7 +61,7 @@ void esp32_Http_weather(HTTPClient& httpClient)
   if (httpCode == HTTP_CODE_OK)
   {
     esp_log.task_printf("weather server -> esp32:\n");
-    DynamicJsonDocument jsonBuffer(2048);
+    
     deserializeJson(jsonBuffer, httpClient.getStream());
     JsonObject root = jsonBuffer.as<JsonObject>();
     const char *text = root["results"][0]["now"]["text"];
@@ -116,7 +116,7 @@ void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块�
 {
   int system_state = NOT_SETUP;
   int system_state_last = NOT_SETUP;
-  
+  DynamicJsonDocument jsonBuffer(2048);
   while (1)
   {
     delay(400);
@@ -148,7 +148,7 @@ void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块�
       }
       // esp32_Http_aqi();
       esp32_Http_hitokoto(httpClient); // 获取一言
-      esp32_Http_weather(httpClient);
+      esp32_Http_weather(httpClient,jsonBuffer);
 #if __has_include("xd.h")
       // esp32_Http_XD();
 #endif
@@ -166,7 +166,7 @@ void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块�
         if (timeinfo.tm_min % 4 == 1)
         {
           // esp32_Http_aqi();
-          esp32_Http_weather(httpClient);
+          esp32_Http_weather(httpClient,jsonBuffer);
         }
         if (timeinfo.tm_min % 4 == 2)
         {

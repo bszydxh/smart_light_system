@@ -48,16 +48,13 @@ void rgbScreenTask(void *xTaskRgbScreen) // 流光溢彩任务
       byte r, g, b;
       while (!Serial.available())
         ;
-      r = Serial.read();
+      leds_rgb_mode[j].r = Serial.read();
       while (!Serial.available())
         ;
-      g = Serial.read();
+      leds_rgb_mode[j].g = Serial.read();
       while (!Serial.available())
         ;
-      b = Serial.read();
-      leds_rgb_mode[j].r = r;
-      leds_rgb_mode[j].g = g;
-      leds_rgb_mode[j].b = b;
+      leds_rgb_mode[j].b = Serial.read();
     }
     if (rgb_running == 1)
     {

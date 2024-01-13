@@ -18,10 +18,10 @@ void auroraPowerState(const String &state)
     {
       return;
     }
-    context.light_on   = 1;
+    context.light_on = 1;
     context.oled_state = 1;
-    context.oled_mode  = 2;
-    context.mode       = 1; // 默认日光
+    context.oled_mode = 2;
+    context.mode = 1; // 默认日光
     set_context(context);
     xSemaphoreGive(led_semaphore);
     on_sitclock();
@@ -35,9 +35,9 @@ void auroraPowerState(const String &state)
     {
       return;
     }
-    context.mode       = 0;
+    context.mode = 0;
     context.oled_state = 0;
-    context.light_on   = 0;
+    context.light_on = 0;
     set_context(context);
     xSemaphoreGive(led_semaphore);
     off_sitclock();
@@ -53,9 +53,9 @@ void auroraColor(int32_t color)
   }
 
   context.light_on = 1; // 强制开启
-  uint8_t colorR   = color >> 16 & 0xFF;
-  uint8_t colorG   = color >> 8 & 0xFF;
-  uint8_t colorB   = color & 0xFF;
+  uint8_t colorR = color >> 16 & 0xFF;
+  uint8_t colorG = color >> 8 & 0xFF;
+  uint8_t colorB = color & 0xFF;
   esp_log.task_printf("miot -> color change:%d:::%d:%d:%d\n",
                       light_set.get_num(),
                       colorR,
@@ -93,9 +93,9 @@ void auroraBright(const String &bright)
     return;
   }
   esp_log.task_printf("miot -> bright change\n");
-  context.light_on   = 1; // 强制开启
+  context.light_on = 1; // 强制开启
   context.brightness = bright.toInt() / 2 + bright.toInt() * 2;
-  context.mode       = 3;
+  context.mode = 3;
   on_sitclock();
   set_context(context);
   xSemaphoreGive(led_semaphore);
@@ -114,21 +114,16 @@ void auroraMode(uint8_t mode_aurora)
   if (mode_aurora == BLINKER_CMD_MIOT_DAY)
   {
     esp_log.task_printf("miot -> MIOT_DAY\n");
-
-    Udp.beginPacket("255.255.255.255", COMPUTER_PORT); // 配置远端ip地址和端口
-    Udp.print("color_off");                            // 把数据写入发送缓冲区
-    Udp.endPacket();                                   // 发送数据
-
-    esp_log.println("UDP数据发送成功");
+    broadcastUdpMsg(COMPUTER_PORT, "color_off");
 
     rgb_task_shutdown();
     if (!get_context(context))
     {
       return;
     }
-    context.light_on   = 1;
+    context.light_on = 1;
     context.oled_state = 1;
-    context.mode       = 3;
+    context.mode = 3;
     set_context(context);
     xSemaphoreGive(led_semaphore);
     on_sitclock();
@@ -136,9 +131,7 @@ void auroraMode(uint8_t mode_aurora)
   else if (mode_aurora == BLINKER_CMD_MIOT_NIGHT)
   {
     esp_log.task_printf("miot -> MIOT_NIGHT(回来了)\n");
-    Udp.beginPacket("255.255.255.255", ESP32_KEYBOARD_PORT); // 配置远端ip地址和端口
-    Udp.print("74245886off"); // 把数据写入发送缓冲区
-    Udp.endPacket();          // 发送数据
+    broadcastUdpMsg(ESP32_KEYBOARD_PORT, "74245886off");
     auroraPowerState("on");
     context.mi_mode = BLINKER_CMD_MIOT_DAY;
     set_context(context);
@@ -146,12 +139,10 @@ void auroraMode(uint8_t mode_aurora)
   else if (mode_aurora == BLINKER_CMD_MIOT_COLOR)
   {
     esp_log.task_printf("miot -> MIOT_COLOR\n");
-    Udp.beginPacket("255.255.255.255", COMPUTER_PORT); // 配置远端ip地址和端口
-    Udp.print("color_off");                            // 把数据写入发送缓冲区
-    Udp.endPacket();                                   // 发送数据
-    esp_log.println("UDP数据发送成功");
+    broadcastUdpMsg(COMPUTER_PORT, "color_off");
+
     rgb_task_shutdown();
-    context.light_on   = 1;
+    context.light_on = 1;
     context.oled_state = 1;
     on_sitclock();
     context.color_r[0] = 255; // 通信量,上灯带
@@ -163,7 +154,7 @@ void auroraMode(uint8_t mode_aurora)
     context.color_r[2] = 255; // 通信量,侧灯带
     context.color_g[2] = 0;   // 通信量
     context.color_b[2] = 255; // 通信量
-    context.mode       = 3;
+    context.mode = 3;
     set_context(context);
     EEPROM_rgb_memory_commit();
     xSemaphoreGive(led_semaphore);
@@ -172,19 +163,15 @@ void auroraMode(uint8_t mode_aurora)
   else if (mode_aurora == BLINKER_CMD_MIOT_WARMTH)
   {
     esp_log.task_printf("miot -> MIOT_WARMTH(genshin)\n");
-    Udp.beginPacket("255.255.255.255", COMPUTER_PORT); // 配置远端ip地址和端口
-    Udp.print("genshin");                              // 把数据写入发送缓冲区
-    Udp.endPacket();                                   // 发送数据
-    esp_log.println("UDP数据发送成功");
-    context.light_on   = 1;
+    broadcastUdpMsg(COMPUTER_PORT, "genshin");
+
+    context.light_on = 1;
     context.oled_state = 1;
     xSemaphoreGive(rgb_semaphore);
     delay(100);
     esp_log.print("Ada\n");
-    Udp.beginPacket("255.255.255.255", COMPUTER_PORT); // 配置远端ip地址和端口
-    Udp.print("color");                                // 把数据写入发送缓冲区
-    Udp.endPacket();                                   // 发送数据
-    esp_log.println("UDP数据发送成功");
+    broadcastUdpMsg(COMPUTER_PORT, "color");
+
     on_sitclock();
     set_context(context);
     xSemaphoreGive(led_semaphore);
@@ -193,16 +180,14 @@ void auroraMode(uint8_t mode_aurora)
   {
     esp_log.task_printf("miot -> MIOT_TV(turn off computer and light)\n");
     rgb_task_shutdown();
-    Udp.beginPacket("255.255.255.255", COMPUTER_PORT); // 配置远端ip地址和端口
-    Udp.print("turn_off");                             // 把数据写入发送缓冲区
-    Udp.endPacket();                                   // 发送数据
-    esp_log.println("UDP数据发送成功");
+    broadcastUdpMsg(COMPUTER_PORT, "turn_off");
+
     esp_log.println("light off");
     off_sitclock();
     delay(4000);
-    context.mode       = 0;
+    context.mode = 0;
     context.oled_state = 0;
-    context.light_on   = 0;
+    context.light_on = 0;
     set_context(context);
     xSemaphoreGive(led_semaphore);
     // #ifdef USE_BLINKER
@@ -213,12 +198,10 @@ void auroraMode(uint8_t mode_aurora)
   else if (mode_aurora == BLINKER_CMD_MIOT_READING)
   {
     esp_log.task_printf("miot -> MIOT_READING\n");
-    Udp.beginPacket("255.255.255.255", COMPUTER_PORT); // 配置远端ip地址和端口
-    Udp.print("color_off");                            // 把数据写入发送缓冲区
-    Udp.endPacket();                                   // 发送数据
-    esp_log.println("UDP数据发送成功");
+    broadcastUdpMsg(COMPUTER_PORT, "color_off");
+
     rgb_task_shutdown();
-    context.light_on   = 1;
+    context.light_on = 1;
     context.oled_state = 1;
     on_sitclock();
     context.color_r[0] = 255; // 通信量,上灯带
@@ -230,7 +213,7 @@ void auroraMode(uint8_t mode_aurora)
     context.color_r[2] = 255; // 通信量,侧灯带
     context.color_g[2] = 150; // 通信量
     context.color_b[2] = 50;  // 通信量
-    context.mode       = 3;
+    context.mode = 3;
     context.brightness = 200;
     set_context(context);
     EEPROM_rgb_memory_commit();
@@ -240,17 +223,15 @@ void auroraMode(uint8_t mode_aurora)
   {
 
     esp_log.task_printf("miot -> MIOT_COMPUTER\n");
-    context.light_on   = 1;
+    context.light_on = 1;
     context.oled_state = 1;
     delay(300);
     xSemaphoreGive(rgb_semaphore);
     xSemaphoreGive(led_semaphore);
     set_context(context);
     esp_log.print("Ada\n");
-    Udp.beginPacket("255.255.255.255", COMPUTER_PORT); // 配置远端ip地址和端口
-    Udp.print("color");                                // 把数据写入发送缓冲区
-    Udp.endPacket();                                   // 发送数据
-    esp_log.println("UDP数据发送成功");
+    broadcastUdpMsg(COMPUTER_PORT, "color");
+
     on_sitclock();
   }
   set_context(context);

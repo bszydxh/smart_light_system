@@ -4,14 +4,14 @@
 #include "oled.h"
 #include "http.h"
 #include "ArduinoJson.h"
-#if __has_include("xd.h") // 非c++官方用法，xd.h是项目作者自己的魔改部分，看情况删
-  #include "xd.h"
-#endif
 
+#if __has_include("xd.h") // 非c++官方用法，xd.h是项目作者自己的魔改部分，看情况删
+#include "xd.h"
+#endif
 
 extern TaskHandle_t http_run;
 TaskHandle_t http_run;
-
+HTTPClient httpClient;
 int http_get(HTTPClient &http)
 {
   // vTaskSuspend(blinker_run);
@@ -51,9 +51,8 @@ void esp32_Http_aqi()
   // }
   // httpClient.end();
 }
-void esp32_Http_weather()
+void esp32_Http_weather(HTTPClient& httpClient)
 {
-  HTTPClient httpClient;
   httpClient.begin(WEATHER_URL);
   httpClient.setUserAgent(HTTP_USERAGENT);
   httpClient.addHeader("charset", "utf-8");
@@ -63,13 +62,10 @@ void esp32_Http_weather()
   {
     esp_log.task_printf("weather server -> esp32:\n");
     DynamicJsonDocument jsonBuffer(2048);
-    // String str = Zlib::ungzipToString(httpClient.getStream());
-    // esp_log.println(str);
     deserializeJson(jsonBuffer, httpClient.getStream());
-    JsonObject  root     = jsonBuffer.as<JsonObject>();
-    const char *text     = root["now"]["text"];
-    const char *temp     = root["now"]["temp"];
-    const char *humidity = root["now"]["humidity"];
+    JsonObject root = jsonBuffer.as<JsonObject>();
+    const char *text = root["results"][0]["now"]["text"];
+    const char *temp = root["results"][0]["now"]["temperature"];
     if (text != NULL)
     {
       sprintf(text_final, "%s", text);
@@ -78,11 +74,11 @@ void esp32_Http_weather()
     {
       sprintf(temp_final, "%s", temp);
     }
-    if (humidity != NULL)
-    {
-      sprintf(humidity_final, "%s", humidity);
-    }
-    esp_log.println(text);
+    // if (humidity != NULL)
+    // {
+    //   sprintf(humidity_final, "%s", humidity);
+    // }
+    esp_log.println(httpClient.getString());
   }
   else
   {
@@ -91,9 +87,8 @@ void esp32_Http_weather()
   }
   httpClient.end();
 }
-void esp32_Http_hitokoto()
+void esp32_Http_hitokoto(HTTPClient& httpClient2)
 {
-  HTTPClient httpClient2;
   httpClient2.begin("https://v1.hitokoto.cn/?encode=text&max_length=10");
   httpClient2.setUserAgent(HTTP_USERAGENT);
   httpClient2.addHeader("charset", "utf-8");
@@ -119,15 +114,16 @@ void esp32_Http_hitokoto()
 
 void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块监控服务
 {
-  int system_state      = NOT_SETUP;
+  int system_state = NOT_SETUP;
   int system_state_last = NOT_SETUP;
+  
   while (1)
   {
     delay(400);
     system_state_last = system_state;
     xQueuePeek(system_state_queue, &system_state, 100);
-    if (system_state ==
-        NOT_SETUP) // http是服务端主体业务，由于blinker就一个黑盒，放在自己写的http服务下面
+    if (system_state == NOT_SETUP)
+    // http是服务端主体业务，由于blinker就一个黑盒，放在自己写的http服务下面
     {
       if (timeinfo.tm_year <= 100 || !strcmp(hitokoto_final, "松花酿酒,春水煎茶。"))
       {
@@ -150,11 +146,11 @@ void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块�
           continue;
         }
       }
-      esp32_Http_weather();
-      esp32_Http_aqi();
-      esp32_Http_hitokoto(); // 获取一言
+      // esp32_Http_aqi();
+      esp32_Http_hitokoto(httpClient); // 获取一言
+      esp32_Http_weather(httpClient);
 #if __has_include("xd.h")
-      esp32_Http_XD();
+      // esp32_Http_XD();
 #endif
       system_state = FINISH_SETUP;
       xQueueOverwrite(system_state_queue, &system_state);
@@ -163,22 +159,23 @@ void httpTask(void *xTaskHttp) // 巨型http请求模块任务,掌管http模块�
     {
       if (timeinfo.tm_sec == 10)
       {
-        if (timeinfo.tm_min % 4 == 0)
+        if (timeinfo.tm_min % 4 == 3)
         {
-          esp32_Http_weather();
+          
         }
         if (timeinfo.tm_min % 4 == 1)
         {
-          esp32_Http_aqi();
+          // esp32_Http_aqi();
+          esp32_Http_weather(httpClient);
         }
         if (timeinfo.tm_min % 4 == 2)
         {
-          esp32_Http_hitokoto();
+          esp32_Http_hitokoto(httpClient);
         }
         if (timeinfo.tm_min % 4 == 3)
         {
 #if __has_include("xd.h")
-          esp32_Http_XD();
+          // esp32_Http_XD();
 #endif
         }
       }

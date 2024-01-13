@@ -147,22 +147,24 @@ void oledTask(void *xTaskOled) // 显示屏任务
     {
       sprintf(str2, "%s USB", str_clockinfo);
     }
+    sprintf(str3, "%s|%s℃", text_final, temp_final);
+    oled_show(str1, str2, str3, hitokoto_final);
     // sprintf(str2, "%s %s", str_clockinfo, text_final);
-    if (timeinfo.tm_sec % 10 >= 5)
-    {
-      sprintf(str3, "%s|%s℃ %s", text_final, temp_final, aqi_final);
-      oled_show(str1, str2, str3, hitokoto_final);
-    }
-    else
-    {
-      sprintf(str3, "%s|%s%% %s", text_final, humidity_final, category_final);
-      // #if __has_include("xd.h")
-      //       oled_show(str1, str2, xd_final, hitokoto_final);
-      // #else
-      //       oled_show(str1, str2, str3, hitokoto_final);
-      // #endif
-      oled_show(str1, str2, str3, hitokoto_final);
-    }
+    // if (timeinfo.tm_sec % 10 >= 5)
+    // {
+    //   sprintf(str3, "%s|%s℃ %s", text_final, temp_final, aqi_final);
+    //   oled_show(str1, str2, str3, hitokoto_final);
+    // }
+    // else
+    // {
+    //   sprintf(str3, "%s|%s%% %s", text_final, humidity_final, category_final);
+    //   // #if __has_include("xd.h")
+    //   //       oled_show(str1, str2, xd_final, hitokoto_final);
+    //   // #else
+    //   //       oled_show(str1, str2, str3, hitokoto_final);
+    //   // #endif
+    //   oled_show(str1, str2, str3, hitokoto_final);
+    // }
     delay(300);
   }
 }

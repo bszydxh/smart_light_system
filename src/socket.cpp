@@ -9,11 +9,14 @@
 TaskHandle_t udp_run;
 TaskHandle_t tcp_run;
 TaskHandle_t udp_config_run;
-char         str1[60];
-char         str2[60];
-char         str3[60];
-char         str_timeinfo[60];
-char         str_clockinfo[60];
+
+String response_dto = "";
+char str1[60];
+char str2[60];
+char str3[60];
+char str_timeinfo[60];
+char str_clockinfo[60];
+char incomingPacket[1024];
 
 void getStatePack(String &pack)
 {
@@ -68,40 +71,36 @@ void getStatePack(String &pack)
   CRGB *leds_temp = leds_temp_state.leds;
 
   DynamicJsonDocument response_dto(10240);
-  response_dto["str1"]             = str1;
-  response_dto["str2"]             = str2;
-  response_dto["str3"]             = str3;
-  response_dto["str4"]             = hitokoto_final;
-  response_dto["state"]            = context.light_on;
-  response_dto["rgb"]              = context.rgb_running;
-  response_dto["light_mode"]       = context.mode;
+  response_dto["str1"] = str1;
+  response_dto["str2"] = str2;
+  response_dto["str3"] = str3;
+  response_dto["str4"] = hitokoto_final;
+  response_dto["state"] = context.light_on;
+  response_dto["rgb"] = context.rgb_running;
+  response_dto["light_mode"] = context.mode;
   response_dto["light_brightness"] = context.brightness;
-  JsonArray leds                   = response_dto.createNestedArray("leds");
+  JsonArray leds = response_dto.createNestedArray("leds");
   for (int i = 0; i < 120; i++)
   {
     uint32_t color = 0;
-    color          = leds_temp[i].b | leds_temp[i].g << 8 | leds_temp[i].r << 16;
+    color = leds_temp[i].b | leds_temp[i].g << 8 | leds_temp[i].r << 16;
     leds.add(color);
   }
   serializeJson(response_dto, pack);
 }
+
 void sendStateToAndroid(const char *host)
 {
-  Udp.beginPacket(host, ANDROID_PORT); // 配置远端ip地址和端口
-  String response_dto = "";
   getStatePack(response_dto);
-  Udp.print(response_dto);
-  Udp.endPacket();
+  sendUdpMsg(host, ANDROID_PORT, response_dto);
   esp_log.task_printf("state -> UDP\n");
 }
 void sendStateToPC(const char *host)
 {
-  // Udp.beginPacket(host, COMPUTER_PORT); // 配置远端ip地址和端口
-  // String response_dto = "";
-  // getStatePack(response_dto);
-  // Udp.print(response_dto);
-  // Udp.endPacket();
-  // esp_log.task_printf("statePC -> UDP\n");
+  getStatePack(response_dto);
+  sendUdpMsg(host, COMPUTER_PORT, response_dto);
+  esp_log.task_printf("state -> UDP\n");
+  esp_log.task_printf("statePC -> UDP\n");
 }
 void udpTask(void *xTaskUdp)
 {
@@ -122,78 +121,73 @@ void udpTask(void *xTaskUdp)
   while (1)
   {
     delay(10);
-    try
+    if (WiFi.status() != WL_CONNECTED)
     {
-      if (WiFi.status() == WL_CONNECTED)
-      {
-        int packetSize = Udp.parsePacket(); // 获得解析包
-        if (packetSize)                     // 解析包不为空
-        {
-          esp_log.info_printf("Freeheap:%d\n", xPortGetFreeHeapSize());
-          esp_log.printf("%s:%d(%d)->UDP:\n",
-                         Udp.remoteIP().toString().c_str(),
-                         Udp.remotePort(),
-                         packetSize);
-          char incomingPacket[255];
-          int  len = Udp.read(incomingPacket, 255); // 返回数据包字节数
-          if (len > 0)
-          {
-            esp_log.printf("%s\n", incomingPacket); // 向串口打印信息
-            incomingPacket[len] = 0;                // 清空缓存
-            if (strcmp(incomingPacket, "turn_on") == 0)
-            {
-              esp_log.task_printf("UDP -> miot\n");
-              miotPowerState("on");
-            }
-            else if (strcmp(incomingPacket, "turn_off") == 0)
-            {
-              esp_log.task_printf("UDP -> miot\n");
-              miotPowerState("off");
-            }
-            else if (strcmp(incomingPacket, "computer") == 0)
-            {
-              esp_log.task_printf("UDP -> miot\n");
-              miotMode(BLINKER_CMD_MIOT_COMPUTER);
-            }
-            else if (strcmp(incomingPacket, "normal_light") == 0)
-            {
-              esp_log.task_printf("UDP -> miot\n");
-              miotMode(BLINKER_CMD_MIOT_DAY);
-            }
-            else if (strcmp(incomingPacket, "computer?") == 0)
-            {
-              Udp.beginPacket(Udp.remoteIP().toString().c_str(),
-                              COMPUTER_PORT); // 配置远端ip地址和端口
-              if (!get_context(context))
-              {
-                continue;
-              }
-              if (context.rgb_running == 1)
-              {
-                Udp.print("computer->Y");
-              }
-              else
-              {
-                Udp.print("computer->N");
-              }
-              Udp.endPacket();
-            }
-            else if (strcmp(incomingPacket, "state") == 0)
-            {
-              esp_log.task_printf("UDP -> state\n");
-            }
-            sendStateToAndroid(Udp.remoteIP().toString().c_str());
-            sendStateToPC(Udp.remoteIP().toString().c_str());
-          }
-        }
-      }
+      continue;
     }
-    catch (const std::exception &e)
+    int packetSize = Udp.parsePacket(); // 获得解析包
+    if (!packetSize)                    // 解析包不为空
     {
-      esp_log.error_printf(e.what());
+      continue;
+    }
+    esp_log.printf("%s:%d(%d)->UDP:\n",
+                   Udp.remoteIP().toString().c_str(),
+                   Udp.remotePort(),
+                   packetSize);
+    int len = Udp.read(incomingPacket, 255); // 返回数据包字节数
+    if (len <= 0 || len >= 1024)
+    {
+      continue;
+    }
+    incomingPacket[len] = 0;                // 添加字符串终止符
+    esp_log.printf("%s\n", incomingPacket); // 向串口打印信息
+    if (strcmp(incomingPacket, "turn_on") == 0)
+    {
+      esp_log.task_printf("UDP -> miot\n");
+      miotPowerState("on");
+    }
+    else if (strcmp(incomingPacket, "turn_off") == 0)
+    {
+      esp_log.task_printf("UDP -> miot\n");
+      miotPowerState("off");
+    }
+    else if (strcmp(incomingPacket, "computer") == 0)
+    {
+      esp_log.task_printf("UDP -> miot\n");
+      miotMode(BLINKER_CMD_MIOT_COMPUTER);
+    }
+    else if (strcmp(incomingPacket, "normal_light") == 0)
+    {
+      esp_log.task_printf("UDP -> miot\n");
+      miotMode(BLINKER_CMD_MIOT_DAY);
+    }
+    // else if (strcmp(incomingPacket, "computer?") == 0)//app查询灯带状态
+    // {
+    //   Udp.beginPacket(Udp.remoteIP().toString().c_str(),
+    //                   COMPUTER_PORT); // 配置远端ip地址和端口
+    //   if (!get_context(context))
+    //   {
+    //     continue;
+    //   }
+    //   if (context.rgb_running == 1)
+    //   {
+    //     Udp.print("computer->Y");
+    //   }
+    //   else
+    //   {
+    //     Udp.print("computer->N");
+    //   }
+    //   Udp.endPacket();
+    // }
+    else if (strcmp(incomingPacket, "state") == 0)
+    {
+      esp_log.task_printf("UDP -> state\n");
+      sendStateToAndroid(Udp.remoteIP().toString().c_str());
+      sendStateToPC(Udp.remoteIP().toString().c_str());
     }
   }
 }
+
 void tcpTask(void *xTaskTcp)
 {
   SysContext context;
@@ -317,8 +311,8 @@ void udpConfigTask(void *xTaskConfigUdp)
                      Udp.remoteIP().toString().c_str(),
                      Udp.remotePort(),
                      packetSize);
-      char   incomingPacket[255];
-      int    len    = Udp.read(incomingPacket, 255); // 返回数据包字节数
+      char incomingPacket[255];
+      int len = Udp.read(incomingPacket, 255); // 返回数据包字节数
       String packet = incomingPacket;
       if (len > 0)
       {
@@ -328,22 +322,22 @@ void udpConfigTask(void *xTaskConfigUdp)
         if (strcmp(incomingPacket, "state") == 0)
         {
           esp_log.task_printf("UDP -> state\n");
-          Udp.beginPacket(Udp.remoteIP().toString().c_str(),
-                          ANDROID_PORT); // 配置远端ip地址和端口
+          // Udp.beginPacket(Udp.remoteIP().toString().c_str(),
+          //                 ANDROID_PORT); // 配置远端ip地址和端口
           DynamicJsonDocument response_dto(10240);
-          char                str_connect[100];
+          char str_connect[100];
           sprintf(str_connect, "%d台设备已连接", WiFi.softAPgetStationNum());
-          response_dto["str1"]             = DEVICE_NAME;
-          response_dto["str2"]             = "配网模式beta";
-          response_dto["str3"]             = "启动app完成操作";
-          response_dto["str4"]             = str_connect;
-          response_dto["state"]            = -1;
-          response_dto["rgb"]              = -1;
-          response_dto["light_mode"]       = -1;
+          response_dto["str1"] = DEVICE_NAME;
+          response_dto["str2"] = "配网模式beta";
+          response_dto["str3"] = "启动app完成操作";
+          response_dto["str4"] = str_connect;
+          response_dto["state"] = -1;
+          response_dto["rgb"] = -1;
+          response_dto["light_mode"] = -1;
           response_dto["light_brightness"] = -1;
-          JsonArray leds                   = response_dto.createNestedArray("leds");
+          JsonArray leds = response_dto.createNestedArray("leds");
           serializeJson(response_dto, Udp);
-          Udp.endPacket();
+          // Udp.endPacket();
           esp_log.task_printf("state -> UDP\n");
         }
         else if (packet.indexOf("{") != -1)
@@ -351,7 +345,7 @@ void udpConfigTask(void *xTaskConfigUdp)
           DynamicJsonDocument doc(1024);
           deserializeJson(doc, packet);
           String ssid = doc["ssid"];
-          String pwd  = doc["pwd"];
+          String pwd = doc["pwd"];
           if (!esp_EEPROM.begin(1024))
           {
             esp_log.println("eeprom fail!");

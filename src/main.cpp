@@ -40,9 +40,6 @@ esp_EEPROM 0-1024自定义
 #include "socket.h"
 #include "button.h"
 #include "socket.h"
-//aab
-//babb
-//abaab
 
 #if __has_include("xd.h") // 非c++官方用法，xd.h是项目作者自己的魔改部分，看情况删
 #include "xd.h"
@@ -245,6 +242,7 @@ void setup()
               IPAddress(0, 0, 0, 0),
               primaryDNS,
               secondaryDNS);
+
   WiFi.begin(ssid, password);
   // WiFi.begin(SSID, PASSWORD);
   xTaskCreatePinnedToCore(buttonConfigTask,
@@ -347,15 +345,15 @@ void setup()
   authPack.password = password;
   xTaskCreatePinnedToCore(blinkerTask,
                           "blinkerTask",
-                          24000,
+                          4096,
                           (void *)&authPack,
                           2,
                           &blinker_run,
                           0);
 #endif
-  xTaskCreatePinnedToCore(httpTask, "httpTask", 20480, NULL, 0, &http_run, 0);
-  xTaskCreatePinnedToCore(udpTask, "udpTask", 7168, NULL, 2, &udp_run, 0);
-  xTaskCreatePinnedToCore(tcpTask, "tcpTask", 7168, NULL, 2, &tcp_run, 0);
+  xTaskCreatePinnedToCore(httpTask, "httpTask", 10240, NULL, 0, &http_run, 0);
+  xTaskCreatePinnedToCore(udpTask, "udpTask", 2048, NULL, 2, &udp_run, 0);
+  xTaskCreatePinnedToCore(tcpTask, "tcpTask", 4096, NULL, 2, &tcp_run, 0);
   xTaskCreatePinnedToCore(buttonTask, "buttonTask", 4096, NULL, 2, &button_run, 0);
   xTaskCreatePinnedToCore(rgbChangeTask,
                           "rgbChangeTask",
@@ -374,7 +372,7 @@ void loop()
 }
 bool get_context(SysContext &Context)
 {
-  bool a = (xQueuePeek(sys_context_queue, &Context, 100) == pdTRUE);
+  bool a = (xQueuePeek(sys_context_queue, &Context, 0) == pdTRUE);
   return a;
 }
 void set_context(SysContext &Context)

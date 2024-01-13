@@ -140,6 +140,7 @@ void rgb1_callback(uint8_t r_value,
 }
 void blinkerTask(void *xTaskBlinker) // blinker任务
 {
+  
   int loopCount = 0;
 #ifdef USE_BLINKER
   AuthPack *authPack = (AuthPack *)xTaskBlinker;

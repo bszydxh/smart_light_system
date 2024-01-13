@@ -1,20 +1,20 @@
 #ifndef __UTILS_H__
 #define __UTILS_H__
 
-#define ESPLOG_ALL   6
+#define ESPLOG_ALL 6
 #define ESPLOG_DEBUG 5
-#define ESPLOG_INFO  4
-#define ESPLOG_TASK  3
-#define ESPLOG_WARN  2
+#define ESPLOG_INFO 4
+#define ESPLOG_TASK 3
+#define ESPLOG_WARN 2
 #define ESPLOG_ERROR 1
-#define ESPLOG_OFF   0
+#define ESPLOG_OFF 0
 
-#define BLINKER_CMD_MIOT_DAY      0
-#define BLINKER_CMD_MIOT_NIGHT    1
-#define BLINKER_CMD_MIOT_COLOR    2
-#define BLINKER_CMD_MIOT_WARMTH   3
-#define BLINKER_CMD_MIOT_TV       4
-#define BLINKER_CMD_MIOT_READING  5
+#define BLINKER_CMD_MIOT_DAY 0
+#define BLINKER_CMD_MIOT_NIGHT 1
+#define BLINKER_CMD_MIOT_COLOR 2
+#define BLINKER_CMD_MIOT_WARMTH 3
+#define BLINKER_CMD_MIOT_TV 4
+#define BLINKER_CMD_MIOT_READING 5
 #define BLINKER_CMD_MIOT_COMPUTER 6
 
 #include <Arduino.h>
@@ -55,7 +55,8 @@ public:
       log_level = ESPLOG_OFF;
     }
   }
-  template <typename... T> void printf(T... arg)
+  template <typename... T>
+  void printf(T... arg)
   {
     if (log_level >= ESPLOG_ALL)
     {
@@ -64,7 +65,8 @@ public:
       Serial.printf(arg...);
     }
   }
-  template <typename T> void println(T arg)
+  template <typename T>
+  void println(T arg)
   {
     if (log_level >= ESPLOG_ALL)
     {
@@ -73,7 +75,8 @@ public:
       Serial.println(arg);
     }
   }
-  template <typename T> void print(T arg)
+  template <typename T>
+  void print(T arg)
   {
     if (log_level >= ESPLOG_ALL)
     {
@@ -82,7 +85,8 @@ public:
       Serial.print(arg);
     }
   }
-  template <typename... T> void error_printf(T... arg)
+  template <typename... T>
+  void error_printf(T... arg)
   {
     if (log_level >= ESPLOG_ERROR)
     {
@@ -91,7 +95,8 @@ public:
       Serial.printf(arg...);
     }
   }
-  template <typename... T> void task_printf(T... arg)
+  template <typename... T>
+  void task_printf(T... arg)
   {
     if (log_level >= ESPLOG_TASK)
     {
@@ -100,7 +105,8 @@ public:
       Serial.printf(arg...);
     }
   }
-  template <typename... T> void info_printf(T... arg)
+  template <typename... T>
+  void info_printf(T... arg)
   {
     if (log_level >= ESPLOG_INFO)
     {
@@ -109,7 +115,8 @@ public:
       Serial.printf(arg...);
     }
   }
-  template <typename... T> void warning_printf(T... arg)
+  template <typename... T>
+  void warning_printf(T... arg)
   {
     if (log_level >= ESPLOG_WARN)
     {
@@ -119,6 +126,7 @@ public:
     }
   }
 };
-extern ESPLog   esp_log;
-
+extern ESPLog esp_log;
+void broadcastUdpMsg(uint16_t port, String msg);
+void sendUdpMsg(const char *host, uint16_t port, String msg);
 #endif //!__UTILS_H__

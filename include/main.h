@@ -84,9 +84,9 @@ struct AuthPack
 #include "config.cpp"
 #else
 //!!!请配置以下内容，否则无法正常运行!!!
+//天气改用心知天气https://seniverse.yuque.com/hyper_data/api_v3/nyiu3t
 #define WEATHER_URL \
-  "https://devapi.qweather.com/v7/weather/now?location=xxx&key=xxx&gzip=n"
-#define AIR_URL "https://devapi.qweather.com/v7/air/now?location=xxx&key=xxx&gzip=n"
+  "https://api.seniverse.com/v3/weather/now.json?key=your_api_key&location=beijing&language=zh-Hans&unit=c"
 #define SSID_LOACL ""
 #define PASSWORD_LOACL 0 // 也可以手动配置，就不用自动配网
 

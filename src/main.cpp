@@ -345,14 +345,14 @@ void setup()
   authPack.password = password;
   xTaskCreatePinnedToCore(blinkerTask,
                           "blinkerTask",
-                          4096,
+                          4096*2,
                           (void *)&authPack,
                           2,
                           &blinker_run,
                           0);
 #endif
   xTaskCreatePinnedToCore(httpTask, "httpTask", 10240, NULL, 0, &http_run, 0);
-  xTaskCreatePinnedToCore(udpTask, "udpTask", 2048, NULL, 2, &udp_run, 0);
+  xTaskCreatePinnedToCore(udpTask, "udpTask", 4096, NULL, 2, &udp_run, 0);
   xTaskCreatePinnedToCore(tcpTask, "tcpTask", 4096, NULL, 2, &tcp_run, 0);
   xTaskCreatePinnedToCore(buttonTask, "buttonTask", 4096, NULL, 2, &button_run, 0);
   xTaskCreatePinnedToCore(rgbChangeTask,

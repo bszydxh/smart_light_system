@@ -2,17 +2,20 @@
 基于esp32的智能灯带系统，支持:小爱同学+流光溢彩+天气时间显示+久坐提醒+关电脑
 #### ------更新于2024/3/6-------
 ## 更新公告
+2024/3/9 已pcb开源至嘉立创
 
 2024/3/6  该项目pcb（esp32开发板的扩展板）通过验证，近期将开源于嘉立创
 
 2024/1/14 更新重构分支no_blinker
 
 2023/2/19 支持手机配网，电脑反控灯带
-## 效果演示
+## 成品演示
 ### 流光溢彩
 https://user-images.githubusercontent.com/79249935/208168212-7c93ab88-0b14-446b-8acc-c92a9ee06c3b.mp4
 ### 电脑反控灯带
 https://user-images.githubusercontent.com/79249935/208168375-cefdf474-2f2c-4264-8bb8-2c2823d160cd.mp4
+### pcb
+![pcb](https://github.com/bszydxh/smart_light_system/assets/79249935/5421104e-4737-49e8-8265-72c883698dcd)
 
 ## 项目概况
 双分支开发，最新版在dev分支，不保证稳定性
@@ -27,34 +30,11 @@ c#电脑端控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/udp_tur
 
 安卓控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/top.bszydxh.light),需要自行打包,并且按需要改动
 
+pcb扩展板[bszydxh/aurora](https://oshwhub.com/bszydxh/aurora),简易焊接即可
+
 感谢c#程序来源[tty228/udp_turn_off](https://github.com/tty228/udp_turn_off)
 
 欢迎提issue
-
-## 配置清单
-    ESP32开发板 * 1
-
-    面包板 * 1
-
-    ws2812b 灯带 (滴胶 60灯/m) * 2m
-
-    0.96寸 SSD1306 OLED屏 (4引脚单色) * 1
-
-    触摸模块 * 2
-
-    mirco转usb<u>数据线</u>
-
-    dc母头 接线器 若干
-
-    灯带免焊连接口(对应店家的) 若干
-
-    快速接线端子 若干
-
-    usb转dc线 若干
-
-    三色导线 若干 (适配灯带)
-
-    杜邦线 若干 (公对母,公对公,母对母)
 
 ## 从机
 

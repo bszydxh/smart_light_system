@@ -34,8 +34,6 @@ c#电脑端控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/udp_tur
 
 安卓控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/top.bszydxh.light),需要自行打包,并且按需要改动
 
-感谢c#程序来源[tty228/udp_turn_off](https://github.com/tty228/udp_turn_off)
-
 欢迎提issue
 
 ## 配置清单

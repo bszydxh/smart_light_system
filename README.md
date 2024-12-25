@@ -30,9 +30,9 @@ master分支比较稳定
 
 手动关闭Blinker库，可实现去mqtt化运行
 
-c#电脑端控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/udp_turn_off),作为系统的比较重要的扩展，需要自行打包
+[c#电脑端控制程序](https://github.com/bszydxh/udp_turn_off),作为系统的比较重要的扩展，需要自行打包
 
-安卓控制程序[bszydxh/udp_turn_off](https://github.com/bszydxh/top.bszydxh.light),需要自行打包,并且按需要改动
+[安卓控制程序](https://github.com/bszydxh/top.bszydxh.light),需要自行打包,并且按需要改动
 
 欢迎提issue
 
